@@ -1,5 +1,6 @@
-import type { Plan } from "./types/Plan";
-import type { Timestep } from "./types/Timestep";
+import { AvailableVehicleTypes } from "../../model/db/vehicles";
+import type { Plan } from "../../model/types/Plan";
+import type { Timestep } from "../../model/types/Timestep";
 
 
 export class GameItemStateManager {
@@ -9,22 +10,37 @@ export class GameItemStateManager {
         steps: [
             {
                 28068: {
+                    kind: "Crate",
                     destinationCountry: "Ghana",
                     isGhost: false
                 },
+                28064: {
+                    id: 0,
+                    name: "My small Car",
+                    kind: "Vehicle",
+                    vehicleType: AvailableVehicleTypes["basic_car"]
+                },
                 28065: {
+                    kind: "Crate",
                     destinationCountry: "Germany",
                     isGhost: false
                 },
-                           20604: {
+                20604: {
+                    kind: "Crate",
                     destinationCountry: "Germany",
                     isGhost: false
+                },
+                20614: {
+                    kind: "Vehicle",
+                    id: 1,
+                    name: "MS Boat",
+                    vehicleType: AvailableVehicleTypes["small_boat"]
                 },
             }
         ]
     }
 
-    getStepAtIndex(i:number): Timestep {
+    getStepAtIndex(i: number): Timestep {
         return this.demoPlan.steps[i]
-    } 
+    }
 }
