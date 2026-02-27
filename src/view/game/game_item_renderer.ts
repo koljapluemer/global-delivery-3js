@@ -12,7 +12,7 @@ import boatUrl from '../../assets/items/vehicles/boat.glb?url'
 import pinUrl from '../../assets/ui/pin.glb?url'
 
 /** Uniform scale applied to each crate model. */
-const CRATE_SCALE = 0.01
+const CRATE_SCALE = 0.004
 /** How far to push each crate along the tile's outward surface normal, in world units. */
 const CRATE_SURFACE_OFFSET = 0
 
