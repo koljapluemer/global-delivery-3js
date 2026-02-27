@@ -10,6 +10,7 @@ import crateUrl from '../../assets/items/crate.glb?url'
 import carUrl from '../../assets/items/vehicles/car.glb?url'
 import boatUrl from '../../assets/items/vehicles/boat.glb?url'
 import pinUrl from '../../assets/ui/pin.glb?url'
+import roundedArrowUrl from '../../assets/ui/rounded_arrow.glb?url'
 
 /** Uniform scale applied to each crate model. */
 const CRATE_SCALE = 0.004
@@ -23,6 +24,11 @@ const PIN_SURFACE_OFFSET = -0.02
 
 /** How far to push route path lines above the surface, in world units. */
 const PATH_LINE_SURFACE_OFFSET = 0.0
+
+/** Uniform scale applied to each cargo-loading arrow. */
+const CARGO_ARROW_SCALE = 0.035
+/** How far to push cargo arrows along the tile's outward surface normal, in world units. */
+const CARGO_ARROW_SURFACE_OFFSET = 0.005
 
 const UP = new THREE.Vector3(0, 1, 0)
 
@@ -87,6 +93,7 @@ export class GameItemRenderer {
     const plan = stateManager.getPlan()
     await this.renderTimestep(plan.steps[stepIndex], plan.crates, plan.vehicles, tileApi, globeCenter)
     await this.renderVehicleMovementPins(plan, tileApi, globeCenter)
+    await this.renderCargoLoadingArrows(plan, tileApi, globeCenter)
   }
 
   dispose(): void {
@@ -209,6 +216,84 @@ export class GameItemRenderer {
             this.drawRouteLine(path, tileApi, globeCenter, vehicleType.offsetAlongNormal, color)
           }
         }
+      }
+    }
+  }
+
+  /**
+   * For every consecutive step pair, detect crates that were on a tile in the current step
+   * but disappear from tileOccupations in the next step while appearing in transportedCargo.
+   * Place a rounded_arrow.glb at the crate's last tile, with its local X+ axis pointing
+   * toward the vehicle's tile in the same (current) step, lying flat on the globe surface.
+   */
+  private async renderCargoLoadingArrows(
+    plan: Plan,
+    tileApi: TileCentersApi,
+    globeCenter: THREE.Vector3
+  ): Promise<void> {
+    const { steps } = plan
+    for (let i = 0; i < steps.length - 1; i++) {
+      const currStep = steps[i]
+      const nextStep = steps[i + 1]
+
+      // Build crateId → tileId for the current step
+      const crateTileInCurr = new Map<number, number>()
+      for (const [tileIdStr, occupant] of Object.entries(currStep.tileOccupations)) {
+        if (occupant[0] === 'CRATE') {
+          crateTileInCurr.set(occupant[1], Number(tileIdStr))
+        }
+      }
+
+      // Build vehicleId → tileId for the current step
+      const vehicleTileInCurr = new Map<number, number>()
+      for (const [tileIdStr, occupant] of Object.entries(currStep.tileOccupations)) {
+        if (occupant[0] === 'VEHICLE') {
+          vehicleTileInCurr.set(occupant[1], Number(tileIdStr))
+        }
+      }
+
+      // Build set of crateIds still present as tiles in the next step
+      const cratesInNextTiles = new Set<number>()
+      for (const occupant of Object.values(nextStep.tileOccupations)) {
+        if (occupant[0] === 'CRATE') cratesInNextTiles.add(occupant[1])
+      }
+
+      // Build set of crateIds that were already transported before this step
+      const alreadyTransported = new Set<number>(Object.keys(currStep.transportedCargo).map(Number))
+
+      for (const [crateIdStr, vehicleId] of Object.entries(nextStep.transportedCargo)) {
+        const crateId = Number(crateIdStr)
+        if (alreadyTransported.has(crateId)) continue   // loaded in an earlier step
+        if (cratesInNextTiles.has(crateId)) continue    // still sitting on a tile, not loaded
+        const crateTileId = crateTileInCurr.get(crateId)
+        if (crateTileId === undefined) continue          // wasn't on a tile in currStep either
+        const vehicleTileId = vehicleTileInCurr.get(vehicleId)
+        if (vehicleTileId === undefined) continue        // vehicle not visible in currStep
+
+        const vehicle = plan.vehicles[vehicleId]
+        if (!vehicle) continue
+
+        const crateTile = tileApi.getTileById(crateTileId)
+        const vehicleTile = tileApi.getTileById(vehicleTileId)
+        if (!crateTile || !vehicleTile) continue
+
+        const cratePos = new THREE.Vector3(crateTile.x, crateTile.z, -crateTile.y)
+        const vehiclePos = new THREE.Vector3(vehicleTile.x, vehicleTile.z, -vehicleTile.y)
+        // The arrow points along its local Z+. Map globe outward normal → model Y+ (lies flat),
+        // and toward-vehicle (tangent) → model Z+ (arrow direction).
+        const yAxis = cratePos.clone().sub(globeCenter).normalize()
+
+        const toVehicle = vehiclePos.clone().sub(cratePos)
+        const zAxis = toVehicle.clone().sub(yAxis.clone().multiplyScalar(toVehicle.dot(yAxis))).normalize()
+        const xAxis = new THREE.Vector3().crossVectors(yAxis, zAxis)
+
+        const arrow = (await this.loadGltf(roundedArrowUrl)).scene.clone()
+        arrow.scale.setScalar(CARGO_ARROW_SCALE)
+        arrow.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis))
+        arrow.position.copy(cratePos).addScaledVector(yAxis, CARGO_ARROW_SURFACE_OFFSET)
+        applyPrimaryColor(arrow, hsvColor(vehicle.hue))
+        this.scene.add(arrow)
+        this.objects.push(arrow)
       }
     }
   }

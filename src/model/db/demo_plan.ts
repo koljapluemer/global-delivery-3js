@@ -42,21 +42,46 @@ export const DEMO_PLAN: Plan = {
       tileOccupations: {
         28068: ['CRATE', 0],
         28763: ['VEHICLE', 0],
-        28065: ['CRATE', 1],
         20604: ['CRATE', 2],
         11464: ['VEHICLE', 1],
       },
-      transportedCargo: {}
+      transportedCargo: {
+        1: 0
+      }
     },
     {
       tileOccupations: {
         28068: ['CRATE', 0],
         28763: ['VEHICLE', 0],
-        28065: ['CRATE', 1],
         20604: ['CRATE', 2],
         20558: ['VEHICLE', 1],
       },
-      transportedCargo: {}
+      transportedCargo: {
+        1: 0
+      }
+    },
+    {
+      tileOccupations: {
+        28068: ['CRATE', 0],
+        28067: ['VEHICLE', 0],
+        20604: ['CRATE', 2],
+        20558: ['VEHICLE', 1],
+      },
+      transportedCargo: {
+        1: 0
+      }
+    },
+
+    {
+      tileOccupations: {
+        39710: ['VEHICLE', 0],
+        20604: ['CRATE', 2],
+        20558: ['VEHICLE', 1],
+      },
+      transportedCargo: {
+        1: 0,
+        0: 0
+      }
     },
   ],
 }

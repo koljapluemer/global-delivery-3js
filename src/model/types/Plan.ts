@@ -8,7 +8,7 @@ type TileOccupant = ["CRATE" | "VEHICLE" , TileOccupantId]
 
 export interface Timestep {
     tileOccupations: Record<TileKey, TileOccupant>,
-    transportedCargo: Record<number, number> // vehicle id, cargo crate id
+    transportedCargo: Record<number, number> //  cargo crate id, vehicle id
 }
 
 
