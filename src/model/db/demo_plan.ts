@@ -1,50 +1,57 @@
 import { AvailableVehicleTypes } from './vehicles'
 import type { Plan } from '../types/Plan'
 import type { Vehicle } from '../types/Vehicle'
+import type { Crate } from '../types/Crate'
 
 export const DEMO_VEHICLE_MANIFEST: Record<number, Vehicle> = {
   0: { name: 'My small Car', vehicleType: AvailableVehicleTypes['basic_car'], hue: 70 },
   1: { name: 'MS Boat', vehicleType: AvailableVehicleTypes['small_boat'], hue: 150 }
 }
 
+export const DEMO_CRATE_MANIFEST: Record<number, Crate> = {
+  0: { destinationCountry: 'Argentina' },
+  1: { destinationCountry: 'Guyana' },
+  2: { destinationCountry: 'Germany' }
+}
 
 export const DEMO_PLAN: Plan = {
   vehicles: DEMO_VEHICLE_MANIFEST,
+  crates: DEMO_CRATE_MANIFEST,
   steps: [
     {
-      28068: { kind: 'Crate', destinationCountry: 'Guyana', isGhost: false },
-      28060: { kind: 'Vehicle', id: 0 },
-      28065: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      20604: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      3400: { kind: 'Vehicle', id: 1 },
+      28068: ['CRATE', 0],
+      28060: ['VEHICLE', 0],
+      28065: ['CRATE', 1],
+      20604: ['CRATE', 2],
+      3400:  ['VEHICLE', 1],
     },
     {
-      28068: { kind: 'Crate', destinationCountry: 'Guyana', isGhost: false },
-      28104: { kind: 'Vehicle', id: 0 },
-      28065: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      20604: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      11460: { kind: 'Vehicle', id: 1 },
+      28068: ['CRATE', 0],
+      28104: ['VEHICLE', 0],
+      28065: ['CRATE', 1],
+      20604: ['CRATE', 2],
+      11460: ['VEHICLE', 1],
     },
     {
-      28068: { kind: 'Crate', destinationCountry: 'Guyana', isGhost: false },
-      28763: { kind: 'Vehicle', id: 0 },
-      28065: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      20604: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      11464: { kind: 'Vehicle', id: 1 },
+      28068: ['CRATE', 0],
+      28763: ['VEHICLE', 0],
+      28065: ['CRATE', 1],
+      20604: ['CRATE', 2],
+      11464: ['VEHICLE', 1],
     },
     {
-      28068: { kind: 'Crate', destinationCountry: 'Guyana', isGhost: false },
-      28763: { kind: 'Vehicle', id: 0 },
-      28065: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      20604: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      20558: { kind: 'Vehicle', id: 1 },
+      28068: ['CRATE', 0],
+      28763: ['VEHICLE', 0],
+      28065: ['CRATE', 1],
+      20604: ['CRATE', 2],
+      20558: ['VEHICLE', 1],
     },
     {
-      28068: { kind: 'Crate', destinationCountry: 'Guyana', isGhost: false },
-      27694: { kind: 'Vehicle', id: 0 },
-      28065: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      20604: { kind: 'Crate', destinationCountry: 'Germany', isGhost: false },
-      2571: { kind: 'Vehicle', id: 1 },
+      28068: ['CRATE', 0],
+      27694: ['VEHICLE', 0],
+      28065: ['CRATE', 1],
+      20604: ['CRATE', 2],
+      2571:  ['VEHICLE', 1],
     },
   ],
 }

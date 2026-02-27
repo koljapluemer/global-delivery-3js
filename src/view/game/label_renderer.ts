@@ -3,6 +3,7 @@ import speechBubbleUrl from '../../assets/ui/speechbubble.png?url'
 import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { Timestep } from '../../model/types/Timestep'
+import type { Crate } from '../../model/types/Crate'
 import type { Plan } from '../../model/types/Plan'
 
 /** Width of the horizon blend zone (fraction of R·|O−C|). ~6–8° of arc. */
@@ -93,18 +94,19 @@ export class LabelRenderer {
   }
 
   /** Build label data from a timestep and push it to the label set. */
-  syncFromTimestep(timestep: Timestep, tileApi: TileCentersApi): void {
+  syncFromTimestep(timestep: Timestep, crates: Record<number, Crate>, tileApi: TileCentersApi): void {
     const data: CrateLabelData[] = []
-    let entityId = 0
     for (const [tileIdStr, occupant] of Object.entries(timestep)) {
-      if (occupant.kind !== 'Crate') continue
+      if (occupant[0] !== 'CRATE') continue
+      const id = occupant[1]
+      const crate = crates[id]
+      if (!crate) continue
       const tile = tileApi.getTileById(Number(tileIdStr))
       if (!tile) continue
-      // Z-up → Y-up remap (same convention as GameItemRenderer)
       data.push({
         worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
-        destinationCountry: occupant.destinationCountry,
-        entityId: entityId++,
+        destinationCountry: crate.destinationCountry,
+        entityId: id,
       })
     }
     this.setCrateLabels(data)
@@ -120,21 +122,22 @@ export class LabelRenderer {
 
       const prevTileByVehicleId = new Map<number, number>()
       for (const [tileIdStr, occupant] of Object.entries(prevStep)) {
-        if (occupant.kind === 'Vehicle') {
-          prevTileByVehicleId.set(occupant.id, Number(tileIdStr))
+        if (occupant[0] === 'VEHICLE') {
+          prevTileByVehicleId.set(occupant[1], Number(tileIdStr))
         }
       }
 
       for (const [tileIdStr, occupant] of Object.entries(currStep)) {
-        if (occupant.kind !== 'Vehicle') continue
+        if (occupant[0] !== 'VEHICLE') continue
         const tileId = Number(tileIdStr)
-        if (prevTileByVehicleId.get(occupant.id) === tileId) continue
+        const id = occupant[1]
+        if (prevTileByVehicleId.get(id) === tileId) continue
         const tile = tileApi.getTileById(tileId)
         if (!tile) continue
         data.push({
           worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
           label: `#${i}`,
-          id: `${occupant.id}-${i}`,
+          id: `${id}-${i}`,
         })
       }
     }

@@ -6,7 +6,3 @@ export interface Vehicle {
     hue: number // first value of a HSV color
 }
 
-export interface VehicleRef {
-    readonly kind: "Vehicle"
-    id: number
-} 

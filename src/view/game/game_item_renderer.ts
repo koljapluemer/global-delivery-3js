@@ -5,6 +5,7 @@ import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { NavApi } from '../../controller/navigation'
 import type { Plan } from '../../model/types/Plan'
 import type { Timestep } from '../../model/types/Timestep'
+import type { Crate } from '../../model/types/Crate'
 import type { Vehicle } from '../../model/types/Vehicle'
 import crateUrl from '../../assets/items/crate.glb?url'
 import carUrl from '../../assets/items/vehicles/car.glb?url'
@@ -85,7 +86,7 @@ export class GameItemRenderer {
     stepIndex = 0
   ): Promise<void> {
     const plan = stateManager.getPlan()
-    await this.renderTimestep(plan.steps[stepIndex], plan.vehicles, tileApi, globeCenter)
+    await this.renderTimestep(plan.steps[stepIndex], plan.crates, plan.vehicles, tileApi, globeCenter)
     await this.renderVehicleMovementPins(plan, tileApi, globeCenter)
   }
 
@@ -102,6 +103,7 @@ export class GameItemRenderer {
 
   private async renderTimestep(
     timestep: Timestep,
+    crates: Record<number, Crate>,
     vehicles: Record<number, Vehicle>,
     tileApi: TileCentersApi,
     globeCenter: THREE.Vector3
@@ -113,14 +115,18 @@ export class GameItemRenderer {
       // Apply Z-up → Y-up remap (same convention used throughout the codebase)
       const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
       const outwardNormal = tilePos.clone().sub(globeCenter).normalize()
+      const [kind, id] = occupant
 
-      if (occupant.kind === 'Crate') {
+      if (kind === 'CRATE') {
+        const crate = crates[id]
+        if (!crate) continue
+
         const obj = (await this.loadGltf(crateUrl)).scene.clone()
         obj.scale.setScalar(CRATE_SCALE)
         obj.quaternion.setFromUnitVectors(UP, outwardNormal)
         obj.position.copy(tilePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)
 
-        if (occupant.isGhost) {
+        if (crate.isGhost) {
           obj.traverse((child) => {
             if (child instanceof THREE.Mesh) {
               child.material = (child.material as THREE.Material).clone()
@@ -132,10 +138,10 @@ export class GameItemRenderer {
 
         this.scene.add(obj)
         this.objects.push(obj)
-      } else if (occupant.kind === 'Vehicle') {
-        const vehicle = vehicles[occupant.id]
+      } else if (kind === 'VEHICLE') {
+        const vehicle = vehicles[id]
         if (!vehicle) {
-          console.warn(`GameItemRenderer: no vehicle data for id ${occupant.id}`)
+          console.warn(`GameItemRenderer: no vehicle data for id ${id}`)
           continue
         }
         const { vehicleType } = vehicle
@@ -174,22 +180,23 @@ export class GameItemRenderer {
       // Build vehicleId → tileId map for the previous step
       const prevTileByVehicleId = new Map<number, number>()
       for (const [tileIdStr, occupant] of Object.entries(prevStep)) {
-        if (occupant.kind === 'Vehicle') {
-          prevTileByVehicleId.set(occupant.id, Number(tileIdStr))
+        if (occupant[0] === 'VEHICLE') {
+          prevTileByVehicleId.set(occupant[1], Number(tileIdStr))
         }
       }
 
       // Find vehicles that are now on a different tile, place a pin and draw route line
       for (const [tileIdStr, occupant] of Object.entries(currStep)) {
-        if (occupant.kind !== 'Vehicle') continue
+        if (occupant[0] !== 'VEHICLE') continue
         const tileId = Number(tileIdStr)
-        const prevTileId = prevTileByVehicleId.get(occupant.id)
+        const id = occupant[1]
+        const prevTileId = prevTileByVehicleId.get(id)
         if (prevTileId === tileId) continue // didn't move
 
         const tile = tileApi.getTileById(tileId)
         if (!tile) continue
 
-        const vehicle = vehicles[occupant.id]
+        const vehicle = vehicles[id]
         if (!vehicle) continue
         const { vehicleType } = vehicle
         const color = hsvColor(vehicle.hue)
