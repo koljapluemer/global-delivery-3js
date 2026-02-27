@@ -221,10 +221,10 @@ export class GameItemRenderer {
   }
 
   /**
-   * For every consecutive step pair, detect crates that were on a tile in the current step
-   * but disappear from tileOccupations in the next step while appearing in transportedCargo.
-   * Place a rounded_arrow.glb at the crate's last tile, with its local X+ axis pointing
-   * toward the vehicle's tile in the same (current) step, lying flat on the globe surface.
+   * Each timestep represents end-of-step state. A crate is loaded in step i when it appears
+   * in step[i].transportedCargo but was absent from step[i-1].transportedCargo.
+   * Place a rounded_arrow.glb at the crate's tile in step[i-1] (last known position),
+   * pointing toward the vehicle's tile in step[i] (where it is after loading).
    */
   private async renderCargoLoadingArrows(
     plan: Plan,
@@ -232,19 +232,19 @@ export class GameItemRenderer {
     globeCenter: THREE.Vector3
   ): Promise<void> {
     const { steps } = plan
-    for (let i = 0; i < steps.length - 1; i++) {
+    for (let i = 1; i < steps.length; i++) {
+      const prevStep = steps[i - 1]
       const currStep = steps[i]
-      const nextStep = steps[i + 1]
 
-      // Build crateId → tileId for the current step
-      const crateTileInCurr = new Map<number, number>()
-      for (const [tileIdStr, occupant] of Object.entries(currStep.tileOccupations)) {
+      // Build crateId → tileId from the previous step (crate's last known position)
+      const crateTileInPrev = new Map<number, number>()
+      for (const [tileIdStr, occupant] of Object.entries(prevStep.tileOccupations)) {
         if (occupant[0] === 'CRATE') {
-          crateTileInCurr.set(occupant[1], Number(tileIdStr))
+          crateTileInPrev.set(occupant[1], Number(tileIdStr))
         }
       }
 
-      // Build vehicleId → tileId for the current step
+      // Build vehicleId → tileId from the current step (where vehicle is after loading)
       const vehicleTileInCurr = new Map<number, number>()
       for (const [tileIdStr, occupant] of Object.entries(currStep.tileOccupations)) {
         if (occupant[0] === 'VEHICLE') {
@@ -252,29 +252,22 @@ export class GameItemRenderer {
         }
       }
 
-      // Build set of crateIds still present as tiles in the next step
-      const cratesInNextTiles = new Set<number>()
-      for (const occupant of Object.values(nextStep.tileOccupations)) {
-        if (occupant[0] === 'CRATE') cratesInNextTiles.add(occupant[1])
-      }
+      // Only show arrows for crates newly loaded this step
+      const alreadyTransported = new Set<number>(Object.keys(prevStep.transportedCargo).map(Number))
 
-      // Build set of crateIds that were already transported before this step
-      const alreadyTransported = new Set<number>(Object.keys(currStep.transportedCargo).map(Number))
-
-      for (const [crateIdStr, vehicleId] of Object.entries(nextStep.transportedCargo)) {
+      for (const [crateIdStr, vehicleId] of Object.entries(currStep.transportedCargo)) {
         const crateId = Number(crateIdStr)
         if (alreadyTransported.has(crateId)) continue   // loaded in an earlier step
-        if (cratesInNextTiles.has(crateId)) continue    // still sitting on a tile, not loaded
-        const crateTileId = crateTileInCurr.get(crateId)
-        if (crateTileId === undefined) continue          // wasn't on a tile in currStep either
+        const crateTileId = crateTileInPrev.get(crateId)
+        if (crateTileId === undefined) continue          // no known previous tile position
         const vehicleTileId = vehicleTileInCurr.get(vehicleId)
         if (vehicleTileId === undefined) continue        // vehicle not visible in currStep
 
         const vehicle = plan.vehicles[vehicleId]
         if (!vehicle) continue
 
-        const crateTile = tileApi.getTileById(crateTileId)
-        const vehicleTile = tileApi.getTileById(vehicleTileId)
+        const crateTile = tileApi.getTileById(crateTileId)   // from prevStep
+        const vehicleTile = tileApi.getTileById(vehicleTileId) // from currStep
         if (!crateTile || !vehicleTile) continue
 
         const cratePos = new THREE.Vector3(crateTile.x, crateTile.z, -crateTile.y)

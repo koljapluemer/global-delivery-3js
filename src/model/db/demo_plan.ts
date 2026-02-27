@@ -32,11 +32,12 @@ export const DEMO_PLAN: Plan = {
       tileOccupations: {
         28068: ['CRATE', 0],
         28104: ['VEHICLE', 0],
-        28065: ['CRATE', 1],
         20604: ['CRATE', 2],
         11460: ['VEHICLE', 1],
       },
-      transportedCargo: {}
+      transportedCargo: {
+        1: 0
+      }
     },
     {
       tileOccupations: {
