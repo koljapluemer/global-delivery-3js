@@ -6,6 +6,7 @@ import { setupLogHoveredTile } from './view/debug/log_hovered_tile'
 import { TileCentersApi } from './controller/layer_0/tile_centers_api'
 import { GameItemStateManager } from './controller/layer_1/game_item_state_manager'
 import { GameItemRenderer } from './view/game/game_item_renderer'
+import { LabelRenderer, type CrateLabelData } from './view/game/label_renderer'
 
 /** Closest the camera can get, as a multiple of the globe's bounding radius. */
 const ZOOM_MIN_RADIUS_FACTOR = 1.05
@@ -27,6 +28,8 @@ const mainCamera = new MainCamera(renderer.domElement)
 const tileCentersApi = new TileCentersApi()
 tileCentersApi.load()
 const gameItemStateManager = new GameItemStateManager()
+
+let labelRenderer: LabelRenderer | null = null
 
 // load globe, then fit camera to its bounding sphere
 globeScene.load().then(({ boundingSphere }) => {
@@ -51,11 +54,31 @@ globeScene.load().then(({ boundingSphere }) => {
   setupLogHoveredTile(pointer)
 
   new GameItemRenderer(globeScene.scene).render(gameItemStateManager, tileCentersApi, center)
+
+  // Build label data from the same tile positions used by GameItemRenderer
+  labelRenderer = new LabelRenderer(mainCamera.camera, center, radius)
+  const timestep = gameItemStateManager.getStepAtIndex(0)
+  const labelData: CrateLabelData[] = []
+  let entityId = 0
+  for (const [tileIdStr, crate] of Object.entries(timestep)) {
+    const tile = tileCentersApi.getTileById(Number(tileIdStr))
+    if (!tile) continue
+    const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
+    labelData.push({ worldPosition: tilePos, destinationCountry: crate.destinationCountry, entityId: entityId++ })
+  }
+  labelRenderer.setCrateLabels(labelData)
 })
 
 // render loop
+let lastTime = performance.now()
+
 function animate() {
+  const now = performance.now()
+  const delta = (now - lastTime) / 1000
+  lastTime = now
   renderer.render(globeScene.scene, mainCamera.camera)
+  // Update DOM labels AFTER render so camera.matrixWorldInverse is current.
+  labelRenderer?.update(delta)
   requestAnimationFrame(animate)
 }
 animate()
