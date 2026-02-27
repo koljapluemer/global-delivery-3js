@@ -39,15 +39,21 @@ interface LabelEntry {
  * That point is always aligned to the crate's projected screen position.
  */
 export class LabelRenderer {
+  private readonly camera: THREE.PerspectiveCamera
+  private readonly globeCenter: THREE.Vector3
+  private readonly globeRadius: number
   private container: HTMLDivElement
   private labels = new Map<number, LabelEntry>()
   private pinLabels = new Map<string, LabelEntry>()
 
   constructor(
-    private camera: THREE.PerspectiveCamera,
-    private globeCenter: THREE.Vector3,
-    private globeRadius: number,
+    camera: THREE.PerspectiveCamera,
+    globeCenter: THREE.Vector3,
+    globeRadius: number,
   ) {
+    this.camera = camera
+    this.globeCenter = globeCenter
+    this.globeRadius = globeRadius
     this.container = document.createElement('div')
     Object.assign(this.container.style, {
       position: 'fixed',
@@ -87,7 +93,7 @@ export class LabelRenderer {
   }
 
   /** Build label data from a timestep and push it to the label set. */
-  syncFromTimestep(timestep: Timestep, tileApi: TileCentersApi, globeCenter: THREE.Vector3): void {
+  syncFromTimestep(timestep: Timestep, tileApi: TileCentersApi): void {
     const data: CrateLabelData[] = []
     let entityId = 0
     for (const [tileIdStr, occupant] of Object.entries(timestep)) {
@@ -105,7 +111,7 @@ export class LabelRenderer {
   }
 
   /** Sync pin labels to the destination tiles of every vehicle movement in the plan. */
-  syncPinsFromPlan(plan: Plan, tileApi: TileCentersApi, globeCenter: THREE.Vector3): void {
+  syncPinsFromPlan(plan: Plan, tileApi: TileCentersApi): void {
     const data: Array<{ worldPosition: THREE.Vector3; label: string; id: string }> = []
 
     for (let i = 1; i < plan.steps.length; i++) {

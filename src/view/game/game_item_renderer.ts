@@ -4,6 +4,8 @@ import type { GameItemStateManager } from '../../controller/layer_1/game_item_st
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { NavApi } from '../../controller/navigation'
 import type { Plan } from '../../model/types/Plan'
+import type { Timestep } from '../../model/types/Timestep'
+import type { Vehicle } from '../../model/types/Vehicle'
 import crateUrl from '../../assets/items/crate.glb?url'
 import carUrl from '../../assets/items/vehicles/car.glb?url'
 import boatUrl from '../../assets/items/vehicles/boat.glb?url'
@@ -33,13 +35,15 @@ const VEHICLE_MESH_URLS: Record<string, string> = {
 }
 
 export class GameItemRenderer {
+  private readonly scene: THREE.Scene
+  private readonly navApi: NavApi
   private objects: THREE.Object3D[] = []
   private gltfCache = new Map<string, GLTF>()
 
-  constructor(
-    private readonly scene: THREE.Scene,
-    private readonly navApi: NavApi,
-  ) {}
+  constructor(scene: THREE.Scene, navApi: NavApi) {
+    this.scene = scene
+    this.navApi = navApi
+  }
 
   async render(
     stateManager: GameItemStateManager,
@@ -47,8 +51,9 @@ export class GameItemRenderer {
     globeCenter: THREE.Vector3,
     stepIndex = 0
   ): Promise<void> {
-    await this.renderTimestep(stateManager.getStepAtIndex(stepIndex), tileApi, globeCenter)
-    await this.renderVehicleMovementPins(stateManager.getPlan(), tileApi, globeCenter)
+    const plan = stateManager.getPlan()
+    await this.renderTimestep(plan.steps[stepIndex], plan.vehicles, tileApi, globeCenter)
+    await this.renderVehicleMovementPins(plan, tileApi, globeCenter)
   }
 
   dispose(): void {
@@ -63,7 +68,8 @@ export class GameItemRenderer {
   // ---------------------------------------------------------------------------
 
   private async renderTimestep(
-    timestep: ReturnType<GameItemStateManager['getStepAtIndex']>,
+    timestep: Timestep,
+    vehicles: Record<number, Vehicle>,
     tileApi: TileCentersApi,
     globeCenter: THREE.Vector3
   ): Promise<void> {
@@ -94,7 +100,12 @@ export class GameItemRenderer {
         this.scene.add(obj)
         this.objects.push(obj)
       } else if (occupant.kind === 'Vehicle') {
-        const { vehicleType } = occupant
+        const vehicle = vehicles[occupant.id]
+        if (!vehicle) {
+          console.warn(`GameItemRenderer: no vehicle data for id ${occupant.id}`)
+          continue
+        }
+        const { vehicleType } = vehicle
         const url = VEHICLE_MESH_URLS[vehicleType.meshPath]
         if (!url) {
           console.warn(`GameItemRenderer: no URL mapping for vehicle mesh "${vehicleType.meshPath}"`)
@@ -121,7 +132,7 @@ export class GameItemRenderer {
     tileApi: TileCentersApi,
     globeCenter: THREE.Vector3
   ): Promise<void> {
-    const { steps } = plan
+    const { steps, vehicles } = plan
     for (let i = 1; i < steps.length; i++) {
       const prevStep = steps[i - 1]
       const currStep = steps[i]
@@ -144,6 +155,10 @@ export class GameItemRenderer {
         const tile = tileApi.getTileById(tileId)
         if (!tile) continue
 
+        const vehicle = vehicles[occupant.id]
+        if (!vehicle) continue
+        const { vehicleType } = vehicle
+
         const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
         const outwardNormal = tilePos.clone().sub(globeCenter).normalize()
 
@@ -157,9 +172,9 @@ export class GameItemRenderer {
 
         // Route line from previous tile to this tile
         if (prevTileId !== undefined) {
-          const path = this.navApi.findPath(prevTileId, tileId, occupant.vehicleType.navMesh)
+          const path = this.navApi.findPath(prevTileId, tileId, vehicleType.navMesh)
           if (path && path.length > 1) {
-            this.drawRouteLine(path, tileApi, globeCenter, occupant.vehicleType.offsetAlongNormal)
+            this.drawRouteLine(path, tileApi, globeCenter, vehicleType.offsetAlongNormal)
           }
         }
       }

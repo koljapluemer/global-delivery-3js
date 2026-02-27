@@ -1,11 +1,12 @@
 import * as THREE from 'three'
-import type { TileCentersApi, TileCenter } from './tile_centers_api'
+import type { TileCentersApi, TileCenter } from './layer_0/tile_centers_api'
 
 export type TileHoverCallback = (tile: TileCenter | null) => void
 
 export class GlobePointer {
   onHover: TileHoverCallback = () => {}
 
+  private readonly camera: THREE.PerspectiveCamera
   private readonly raycaster = new THREE.Raycaster()
   private readonly mouse = new THREE.Vector2()
   private readonly sphereCenter: THREE.Vector3
@@ -14,10 +15,11 @@ export class GlobePointer {
 
   constructor(
     canvas: HTMLCanvasElement,
-    private readonly camera: THREE.PerspectiveCamera,
+    camera: THREE.PerspectiveCamera,
     api: TileCentersApi,
     boundingSphere: THREE.Sphere
   ) {
+    this.camera = camera
     this.sphereCenter = boundingSphere.center.clone()
     this.sphereRadius = boundingSphere.radius
     this.tiles = api.getAll()

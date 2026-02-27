@@ -35,8 +35,8 @@ globeScene.load().then(({ boundingSphere }) => {
   gameItemRenderer.render(gameItemStateManager, tileCentersApi, boundingSphere.center)
 
   labelRenderer = new LabelRenderer(mainCamera.camera, boundingSphere.center, boundingSphere.radius)
-  labelRenderer.syncFromTimestep(gameItemStateManager.getStepAtIndex(0), tileCentersApi, boundingSphere.center)
-  labelRenderer.syncPinsFromPlan(gameItemStateManager.getPlan(), tileCentersApi, boundingSphere.center)
+  labelRenderer.syncFromTimestep(gameItemStateManager.getStepAtIndex(0), tileCentersApi)
+  labelRenderer.syncPinsFromPlan(gameItemStateManager.getPlan(), tileCentersApi)
 })
 
 let lastTime = performance.now()
