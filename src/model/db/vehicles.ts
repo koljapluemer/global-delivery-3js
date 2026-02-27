@@ -7,7 +7,8 @@ export const AvailableVehicleTypes: Record<string, VehicleType> = {
         baseSpeed: 10,
         meshPath: "assets/items/vehicles/car.glb",
         offsetAlongNormal: 0.0065,
-        scale: 0.008
+        scale: 0.008,
+        navMesh: "LAND"
     },
     "small_boat": {
         baseCapacity: 2,
@@ -15,6 +16,7 @@ export const AvailableVehicleTypes: Record<string, VehicleType> = {
         baseSpeed: 5,
         meshPath: "assets/items/vehicles/boat.glb",
         offsetAlongNormal: -.01,
-        scale: 0.008
+        scale: 0.008,
+        navMesh: "WATER"
     }
 } as const

@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { GameItemStateManager } from '../../controller/layer_1/game_item_state_manager'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
+import type { NavApi } from '../../controller/navigation'
 import type { Plan } from '../../model/types/Plan'
 import crateUrl from '../../assets/items/crate.glb?url'
 import carUrl from '../../assets/items/vehicles/car.glb?url'
@@ -18,6 +19,11 @@ const PIN_SCALE = 0.02
 /** How far to push each pin along the outward surface normal, in world units. */
 const PIN_SURFACE_OFFSET = -0.02
 
+/** How far to push route path lines above the surface, in world units. */
+const PATH_LINE_SURFACE_OFFSET = 0.0
+/** Color of the route path lines. */
+const PATH_LINE_COLOR = 0xffffff
+
 const UP = new THREE.Vector3(0, 1, 0)
 
 /** Maps VehicleType.meshPath values to their Vite-resolved asset URLs. */
@@ -30,7 +36,10 @@ export class GameItemRenderer {
   private objects: THREE.Object3D[] = []
   private gltfCache = new Map<string, GLTF>()
 
-  constructor(private readonly scene: THREE.Scene) {}
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly navApi: NavApi,
+  ) {}
 
   async render(
     stateManager: GameItemStateManager,
@@ -125,11 +134,12 @@ export class GameItemRenderer {
         }
       }
 
-      // Find vehicles that are now on a different tile and place a pin there
+      // Find vehicles that are now on a different tile, place a pin and draw route line
       for (const [tileIdStr, occupant] of Object.entries(currStep)) {
         if (occupant.kind !== 'Vehicle') continue
         const tileId = Number(tileIdStr)
-        if (prevTileByVehicleId.get(occupant.id) === tileId) continue // didn't move
+        const prevTileId = prevTileByVehicleId.get(occupant.id)
+        if (prevTileId === tileId) continue // didn't move
 
         const tile = tileApi.getTileById(tileId)
         if (!tile) continue
@@ -137,15 +147,47 @@ export class GameItemRenderer {
         const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
         const outwardNormal = tilePos.clone().sub(globeCenter).normalize()
 
+        // Pin at destination
         const pin = (await this.loadGltf(pinUrl)).scene.clone()
         pin.scale.setScalar(PIN_SCALE)
         pin.quaternion.setFromUnitVectors(UP, outwardNormal)
         pin.position.copy(tilePos).addScaledVector(outwardNormal, PIN_SURFACE_OFFSET)
-
         this.scene.add(pin)
         this.objects.push(pin)
+
+        // Route line from previous tile to this tile
+        if (prevTileId !== undefined) {
+          const path = this.navApi.findPath(prevTileId, tileId, occupant.vehicleType.navMesh)
+          if (path && path.length > 1) {
+            this.drawRouteLine(path, tileApi, globeCenter, occupant.vehicleType.offsetAlongNormal)
+          }
+        }
       }
     }
+  }
+
+  private drawRouteLine(
+    pathTileIds: number[],
+    tileApi: TileCentersApi,
+    globeCenter: THREE.Vector3,
+    vehicleSurfaceOffset: number
+  ): void {
+    const surfaceOffset = vehicleSurfaceOffset + PATH_LINE_SURFACE_OFFSET
+    const points: THREE.Vector3[] = []
+    for (const tileId of pathTileIds) {
+      const tile = tileApi.getTileById(tileId)
+      if (!tile) continue
+      const pos = new THREE.Vector3(tile.x, tile.z, -tile.y)
+      const normal = pos.clone().sub(globeCenter).normalize()
+      points.push(pos.clone().addScaledVector(normal, surfaceOffset))
+    }
+    if (points.length < 2) return
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points)
+    const material = new THREE.LineBasicMaterial({ color: PATH_LINE_COLOR })
+    const line = new THREE.Line(geometry, material)
+    this.scene.add(line)
+    this.objects.push(line)
   }
 
   private loadGltf(url: string): Promise<GLTF> {

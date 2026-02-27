@@ -5,4 +5,5 @@ export interface VehicleType {
     meshPath: string;
     scale: number;
     offsetAlongNormal: number;
+    navMesh: "WATER" | "LAND" | "ALL";
 }
