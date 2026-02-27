@@ -1,6 +1,8 @@
 import * as THREE from 'three'
-import { GlobeScene } from './core/scene/globe_scene'
-import { MainCamera } from './core/camera/main_camera'
+import { GlobeScene } from './view/game/globe_scene'
+import { MainCamera } from './view/camera/main_camera'
+import { TileCentersApi } from './controller/tile_centers_api'
+import { TileCentersRenderer } from './view/debug/tile_centers_renderer'
 
 /** Closest the camera can get, as a multiple of the globe's bounding radius. */
 const ZOOM_MIN_RADIUS_FACTOR = 1.05
@@ -17,6 +19,11 @@ document.body.appendChild(renderer.domElement)
 // scene & camera
 const globeScene = new GlobeScene()
 const mainCamera = new MainCamera(renderer.domElement)
+
+// tile data
+const tileCentersApi = new TileCentersApi()
+tileCentersApi.load()
+new TileCentersRenderer(globeScene.scene).render(tileCentersApi)
 
 // load globe, then fit camera to its bounding sphere
 globeScene.load().then(({ boundingSphere }) => {
