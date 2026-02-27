@@ -2,9 +2,8 @@ import * as THREE from 'three'
 import speechBubbleUrl from '../../assets/ui/speechbubble.png?url'
 import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
-import type { Timestep } from '../../model/types/Timestep'
+import type { Plan, Timestep } from '../../model/types/Plan'
 import type { Crate } from '../../model/types/Crate'
-import type { Plan } from '../../model/types/Plan'
 
 /** Width of the horizon blend zone (fraction of R·|O−C|). ~6–8° of arc. */
 const HORIZON_BLEND_EPSILON = 0.1
@@ -96,7 +95,7 @@ export class LabelRenderer {
   /** Build label data from a timestep and push it to the label set. */
   syncFromTimestep(timestep: Timestep, crates: Record<number, Crate>, tileApi: TileCentersApi): void {
     const data: CrateLabelData[] = []
-    for (const [tileIdStr, occupant] of Object.entries(timestep)) {
+    for (const [tileIdStr, occupant] of Object.entries(timestep.tileOccupations)) {
       if (occupant[0] !== 'CRATE') continue
       const id = occupant[1]
       const crate = crates[id]
@@ -121,13 +120,13 @@ export class LabelRenderer {
       const currStep = plan.steps[i]
 
       const prevTileByVehicleId = new Map<number, number>()
-      for (const [tileIdStr, occupant] of Object.entries(prevStep)) {
+      for (const [tileIdStr, occupant] of Object.entries(prevStep.tileOccupations)) {
         if (occupant[0] === 'VEHICLE') {
           prevTileByVehicleId.set(occupant[1], Number(tileIdStr))
         }
       }
 
-      for (const [tileIdStr, occupant] of Object.entries(currStep)) {
+      for (const [tileIdStr, occupant] of Object.entries(currStep.tileOccupations)) {
         if (occupant[0] !== 'VEHICLE') continue
         const tileId = Number(tileIdStr)
         const id = occupant[1]

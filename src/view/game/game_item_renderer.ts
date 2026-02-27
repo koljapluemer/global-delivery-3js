@@ -3,8 +3,7 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { GameItemStateManager } from '../../controller/layer_1/game_item_state_manager'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { NavApi } from '../../controller/navigation'
-import type { Plan } from '../../model/types/Plan'
-import type { Timestep } from '../../model/types/Timestep'
+import type { Plan, Timestep } from '../../model/types/Plan'
 import type { Crate } from '../../model/types/Crate'
 import type { Vehicle } from '../../model/types/Vehicle'
 import crateUrl from '../../assets/items/crate.glb?url'
@@ -108,7 +107,7 @@ export class GameItemRenderer {
     tileApi: TileCentersApi,
     globeCenter: THREE.Vector3
   ): Promise<void> {
-    for (const [tileIdStr, occupant] of Object.entries(timestep)) {
+    for (const [tileIdStr, occupant] of Object.entries(timestep.tileOccupations)) {
       const tile = tileApi.getTileById(Number(tileIdStr))
       if (!tile) continue
 
@@ -125,16 +124,6 @@ export class GameItemRenderer {
         obj.scale.setScalar(CRATE_SCALE)
         obj.quaternion.setFromUnitVectors(UP, outwardNormal)
         obj.position.copy(tilePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)
-
-        if (crate.isGhost) {
-          obj.traverse((child) => {
-            if (child instanceof THREE.Mesh) {
-              child.material = (child.material as THREE.Material).clone()
-              ;(child.material as THREE.MeshStandardMaterial).transparent = true
-              ;(child.material as THREE.MeshStandardMaterial).opacity = 0.4
-            }
-          })
-        }
 
         this.scene.add(obj)
         this.objects.push(obj)
@@ -179,14 +168,14 @@ export class GameItemRenderer {
 
       // Build vehicleId → tileId map for the previous step
       const prevTileByVehicleId = new Map<number, number>()
-      for (const [tileIdStr, occupant] of Object.entries(prevStep)) {
+      for (const [tileIdStr, occupant] of Object.entries(prevStep.tileOccupations)) {
         if (occupant[0] === 'VEHICLE') {
           prevTileByVehicleId.set(occupant[1], Number(tileIdStr))
         }
       }
 
       // Find vehicles that are now on a different tile, place a pin and draw route line
-      for (const [tileIdStr, occupant] of Object.entries(currStep)) {
+      for (const [tileIdStr, occupant] of Object.entries(currStep.tileOccupations)) {
         if (occupant[0] !== 'VEHICLE') continue
         const tileId = Number(tileIdStr)
         const id = occupant[1]

@@ -19,39 +19,44 @@ export const DEMO_PLAN: Plan = {
   crates: DEMO_CRATE_MANIFEST,
   steps: [
     {
-      28068: ['CRATE', 0],
-      28060: ['VEHICLE', 0],
-      28065: ['CRATE', 1],
-      20604: ['CRATE', 2],
-      3400:  ['VEHICLE', 1],
+      tileOccupations: {
+        28068: ['CRATE', 0],
+        28060: ['VEHICLE', 0],
+        28065: ['CRATE', 1],
+        20604: ['CRATE', 2],
+        3400: ['VEHICLE', 1],
+      },
+      transportedCargo: {}
     },
     {
-      28068: ['CRATE', 0],
-      28104: ['VEHICLE', 0],
-      28065: ['CRATE', 1],
-      20604: ['CRATE', 2],
-      11460: ['VEHICLE', 1],
+      tileOccupations: {
+        28068: ['CRATE', 0],
+        28104: ['VEHICLE', 0],
+        28065: ['CRATE', 1],
+        20604: ['CRATE', 2],
+        11460: ['VEHICLE', 1],
+      },
+      transportedCargo: {}
     },
     {
-      28068: ['CRATE', 0],
-      28763: ['VEHICLE', 0],
-      28065: ['CRATE', 1],
-      20604: ['CRATE', 2],
-      11464: ['VEHICLE', 1],
+      tileOccupations: {
+        28068: ['CRATE', 0],
+        28763: ['VEHICLE', 0],
+        28065: ['CRATE', 1],
+        20604: ['CRATE', 2],
+        11464: ['VEHICLE', 1],
+      },
+      transportedCargo: {}
     },
     {
-      28068: ['CRATE', 0],
-      28763: ['VEHICLE', 0],
-      28065: ['CRATE', 1],
-      20604: ['CRATE', 2],
-      20558: ['VEHICLE', 1],
-    },
-    {
-      28068: ['CRATE', 0],
-      27694: ['VEHICLE', 0],
-      28065: ['CRATE', 1],
-      20604: ['CRATE', 2],
-      2571:  ['VEHICLE', 1],
+      tileOccupations: {
+        28068: ['CRATE', 0],
+        28763: ['VEHICLE', 0],
+        28065: ['CRATE', 1],
+        20604: ['CRATE', 2],
+        20558: ['VEHICLE', 1],
+      },
+      transportedCargo: {}
     },
   ],
 }

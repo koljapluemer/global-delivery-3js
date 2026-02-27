@@ -1,5 +1,4 @@
-import type { Plan } from '../../model/types/Plan'
-import type { Timestep } from '../../model/types/Timestep'
+import type { Plan, Timestep } from '../../model/types/Plan'
 
 export class GameItemStateManager {
   private readonly plan: Plan
