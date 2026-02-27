@@ -1,5 +1,9 @@
 import * as THREE from 'three'
 
+const ZOOM_MIN_RADIUS_FACTOR = 1.05
+const ZOOM_MAX_RADIUS_FACTOR = 5.0
+const ZOOM_INITIAL_FIT_MARGIN = 2
+
 const MAX_LATITUDE_DEG = 85.0
 const ORBIT_SENSITIVITY = 0.004
 const ROTATION_SCALE_AT_MIN_ZOOM = 0.1
@@ -58,6 +62,26 @@ export class MainCamera {
     this.longitude = Math.atan2(dir.x, dir.z)
     this.clampLatitude()
     this.applyOrbit()
+  }
+
+  /** Fit the camera to the loaded globe. Call once after GlobeScene.load() resolves. */
+  fitToGlobe(boundingSphere: THREE.Sphere): void {
+    const { center, radius } = boundingSphere
+    const fovRad = THREE.MathUtils.degToRad(this.camera.fov)
+    const fitDistance = (radius / Math.sin(fovRad / 2)) * ZOOM_INITIAL_FIT_MARGIN
+    const distMin = radius * ZOOM_MIN_RADIUS_FACTOR
+    const distMax = radius * ZOOM_MAX_RADIUS_FACTOR
+
+    this.camera.near = distMin * 0.01
+    this.camera.far = distMax * 2
+    this.camera.updateProjectionMatrix()
+
+    this.init(
+      center,
+      center.clone().add(new THREE.Vector3(0, 0, fitDistance)),
+      distMin,
+      distMax
+    )
   }
 
   setAspect(aspect: number) {

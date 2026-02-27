@@ -3,6 +3,8 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { GameItemStateManager } from '../../controller/layer_1/game_item_state_manager'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import crateUrl from '../../assets/items/crate.glb?url'
+import carUrl from '../../assets/items/vehicles/car.glb?url'
+import boatUrl from '../../assets/items/vehicles/boat.glb?url'
 
 /** Uniform scale applied to each crate model. */
 const CRATE_SCALE = 0.01
@@ -11,8 +13,15 @@ const CRATE_SURFACE_OFFSET = 0
 
 const UP = new THREE.Vector3(0, 1, 0)
 
+/** Maps VehicleType.meshPath values to their Vite-resolved asset URLs. */
+const VEHICLE_MESH_URLS: Record<string, string> = {
+  'assets/items/vehicles/car.glb': carUrl,
+  'assets/items/vehicles/boat.glb': boatUrl,
+}
+
 export class GameItemRenderer {
-  private crates: THREE.Object3D[] = []
+  private objects: THREE.Object3D[] = []
+  private gltfCache = new Map<string, GLTF>()
 
   constructor(private readonly scene: THREE.Scene) {}
 
@@ -23,9 +32,8 @@ export class GameItemRenderer {
     stepIndex = 0
   ): Promise<void> {
     const timestep = stateManager.getStepAtIndex(stepIndex)
-    const gltf = await this.loadGltf()
 
-    for (const [tileIdStr, crate] of Object.entries(timestep)) {
+    for (const [tileIdStr, occupant] of Object.entries(timestep)) {
       const tile = tileApi.getTileById(Number(tileIdStr))
       if (!tile) continue
 
@@ -33,43 +41,65 @@ export class GameItemRenderer {
       const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
       const outwardNormal = tilePos.clone().sub(globeCenter).normalize()
 
-      const crateObj = gltf.scene.clone()
-      crateObj.scale.setScalar(CRATE_SCALE)
+      if (occupant.kind === 'Crate') {
+        const gltf = await this.loadGltf(crateUrl)
+        const obj = gltf.scene.clone()
+        obj.scale.setScalar(CRATE_SCALE)
+        obj.quaternion.setFromUnitVectors(UP, outwardNormal)
+        obj.position.copy(tilePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)
 
-      // Orient so the crate's +Y axis faces outward from the globe surface
-      crateObj.quaternion.setFromUnitVectors(UP, outwardNormal)
+        if (occupant.isGhost) {
+          obj.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.material = (child.material as THREE.Material).clone()
+              ;(child.material as THREE.MeshStandardMaterial).transparent = true
+              ;(child.material as THREE.MeshStandardMaterial).opacity = 0.4
+            }
+          })
+        }
 
-      // Place at tile position + surface offset along the normal
-      crateObj.position
-        .copy(tilePos)
-        .addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)
+        this.scene.add(obj)
+        this.objects.push(obj)
+      } else if (occupant.kind === 'Vehicle') {
+        const { vehicleType } = occupant
+        const url = VEHICLE_MESH_URLS[vehicleType.meshPath]
+        if (!url) {
+          console.warn(`GameItemRenderer: no URL mapping for vehicle mesh "${vehicleType.meshPath}"`)
+          continue
+        }
 
-      if (crate.isGhost) {
-        crateObj.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            // Clone material so ghost state doesn't bleed into the shared asset
-            child.material = (child.material as THREE.Material).clone()
-            ;(child.material as THREE.MeshStandardMaterial).transparent = true
-            ;(child.material as THREE.MeshStandardMaterial).opacity = 0.4
-          }
-        })
+        const gltf = await this.loadGltf(url)
+        const obj = gltf.scene.clone()
+        obj.scale.setScalar(vehicleType.scale)
+        obj.quaternion.setFromUnitVectors(UP, outwardNormal)
+        obj.position.copy(tilePos).addScaledVector(outwardNormal, vehicleType.offsetAlongNormal)
+
+        this.scene.add(obj)
+        this.objects.push(obj)
       }
-
-      this.scene.add(crateObj)
-      this.crates.push(crateObj)
     }
   }
 
   dispose(): void {
-    for (const crate of this.crates) {
-      this.scene.remove(crate)
+    for (const obj of this.objects) {
+      this.scene.remove(obj)
     }
-    this.crates = []
+    this.objects = []
   }
 
-  private loadGltf(): Promise<GLTF> {
+  private loadGltf(url: string): Promise<GLTF> {
+    const cached = this.gltfCache.get(url)
+    if (cached) return Promise.resolve(cached)
     return new Promise((resolve, reject) => {
-      new GLTFLoader().load(crateUrl, resolve, undefined, reject)
+      new GLTFLoader().load(
+        url,
+        (gltf) => {
+          this.gltfCache.set(url, gltf)
+          resolve(gltf)
+        },
+        undefined,
+        reject
+      )
     })
   }
 }

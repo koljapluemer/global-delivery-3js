@@ -14,7 +14,7 @@ export class GameItemStateManager {
                     destinationCountry: "Ghana",
                     isGhost: false
                 },
-                28064: {
+                3399: {
                     id: 0,
                     name: "My small Car",
                     kind: "Vehicle",
@@ -30,7 +30,7 @@ export class GameItemStateManager {
                     destinationCountry: "Germany",
                     isGhost: false
                 },
-                20614: {
+                3400: {
                     kind: "Vehicle",
                     id: 1,
                     name: "MS Boat",

@@ -6,15 +6,15 @@ export const AvailableVehicleTypes: Record<string, VehicleType> = {
         baseMovementCost: 1,
         baseSpeed: 10,
         meshPath: "assets/items/vehicles/car.glb",
-        offsetAlongNormal: 0,
-        scale: 0.1
+        offsetAlongNormal: 0.0065,
+        scale: 0.008
     },
     "small_boat": {
         baseCapacity: 2,
         baseMovementCost: 1,
         baseSpeed: 5,
         meshPath: "assets/items/vehicles/boat.glb",
-        offsetAlongNormal: -.001,
-        scale: 0.1
+        offsetAlongNormal: -.01,
+        scale: 0.008
     }
 } as const

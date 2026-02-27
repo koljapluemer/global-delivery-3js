@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import speechBubbleUrl from '../../assets/ui/speechbubble.png?url'
+import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
+import type { Timestep } from '../../model/types/Timestep'
 
 /** Width of the horizon blend zone (fraction of R·|O−C|). ~6–8° of arc. */
 const HORIZON_BLEND_EPSILON = 0.1
@@ -8,7 +10,7 @@ const HORIZON_ROTATION_OFFSET = Math.PI / 2
 /** Exponential-decay speed for rotation smoothing (1/s). */
 const ROTATION_SMOOTH_SPEED = 10.0
 
-export interface CrateLabelData {
+interface CrateLabelData {
   worldPosition: THREE.Vector3
   destinationCountry: string
   entityId: number
@@ -79,6 +81,24 @@ export class LabelRenderer {
         this.labels.delete(id)
       }
     }
+  }
+
+  /** Build label data from a timestep and push it to the label set. */
+  syncFromTimestep(timestep: Timestep, tileApi: TileCentersApi, globeCenter: THREE.Vector3): void {
+    const data: CrateLabelData[] = []
+    let entityId = 0
+    for (const [tileIdStr, occupant] of Object.entries(timestep)) {
+      if (occupant.kind !== 'Crate') continue
+      const tile = tileApi.getTileById(Number(tileIdStr))
+      if (!tile) continue
+      // Z-up → Y-up remap (same convention as GameItemRenderer)
+      data.push({
+        worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
+        destinationCountry: occupant.destinationCountry,
+        entityId: entityId++,
+      })
+    }
+    this.setCrateLabels(data)
   }
 
   /** Call each frame with the elapsed time in seconds. */
