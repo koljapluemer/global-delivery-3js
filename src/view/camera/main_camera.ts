@@ -4,6 +4,10 @@ const MAX_LATITUDE_DEG = 85.0
 const ORBIT_SENSITIVITY = 0.004
 const ROTATION_SCALE_AT_MIN_ZOOM = 0.1
 const ROTATION_SCALE_AT_MAX_ZOOM = 3.0
+/** Zoom step as a fraction of current distance when fully zoomed in (small = slow). */
+const ZOOM_SPEED_AT_MIN_DISTANCE = 0.005
+/** Zoom step as a fraction of current distance when fully zoomed out (larger = faster). */
+const ZOOM_SPEED_AT_MAX_DISTANCE = 0.05
 
 export class MainCamera {
   readonly camera: THREE.PerspectiveCamera
@@ -81,7 +85,7 @@ export class MainCamera {
     // Step is a fraction of current distance so it feels consistent at any scale.
     const zoomT = (this.distance - this.distanceMin) /
       Math.max(this.distanceMax - this.distanceMin, 0.001)
-    const step = this.distance * THREE.MathUtils.lerp(0.005, 0.05, zoomT)
+    const step = this.distance * THREE.MathUtils.lerp(ZOOM_SPEED_AT_MIN_DISTANCE, ZOOM_SPEED_AT_MAX_DISTANCE, zoomT)
     this.distance = Math.max(
       this.distanceMin,
       Math.min(this.distanceMax, this.distance + (e.deltaY > 0 ? step : -step))
