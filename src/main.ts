@@ -1,66 +1,52 @@
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import globeUrl from './assets/globe/world.glb?url'
+import { GlobeScene } from './core/scene/globe_scene'
+import { MainCamera } from './core/camera/main_camera'
 
-// scene
-const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x222222)
-
-// camera
-const camera = new THREE.PerspectiveCamera(
-  75,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  100
-)
-camera.position.z = 2
+/** Closest the camera can get, as a multiple of the globe's bounding radius. */
+const ZOOM_MIN_RADIUS_FACTOR = 1.05
+/** Furthest the camera can get, as a multiple of the globe's bounding radius. */
+const ZOOM_MAX_RADIUS_FACTOR = 5.0
+/** Initial camera distance from globe center, as a multiple of the bounding radius. */
+const ZOOM_INITIAL_FIT_MARGIN = 2
 
 // renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
 document.body.appendChild(renderer.domElement)
 
-// lights
-const dirLight = new THREE.DirectionalLight(0xffffff, 2)
-dirLight.position.set(5, 5, 5)
-scene.add(dirLight)
+// scene & camera
+const globeScene = new GlobeScene()
+const mainCamera = new MainCamera(renderer.domElement)
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
-scene.add(ambientLight)
+// load globe, then fit camera to its bounding sphere
+globeScene.load().then(({ boundingSphere }) => {
+  const { center, radius } = boundingSphere
+  const fovRad = THREE.MathUtils.degToRad(mainCamera.camera.fov)
+  const fitDistance = (radius / Math.sin(fovRad / 2)) * ZOOM_INITIAL_FIT_MARGIN
+  const distMin = radius * ZOOM_MIN_RADIUS_FACTOR
+  const distMax = radius * ZOOM_MAX_RADIUS_FACTOR
 
-// load globe
-const loader = new GLTFLoader()
-let globe: THREE.Object3D | null = null
+  mainCamera.camera.near = distMin * 0.01
+  mainCamera.camera.far  = distMax * 2
+  mainCamera.camera.updateProjectionMatrix()
 
-loader.load(globeUrl, (gltf) => {
-  globe = gltf.scene
-  scene.add(globe)
-
-  // fit camera to model regardless of its scale
-  const box = new THREE.Box3().setFromObject(globe)
-  const sphere = box.getBoundingSphere(new THREE.Sphere())
-  const fovRad = THREE.MathUtils.degToRad(camera.fov)
-  const distance = sphere.radius / Math.sin(fovRad / 2) * 1.2
-  camera.position.set(0, 0, sphere.center.z + distance)
-  camera.near = distance * 0.01
-  camera.far = distance * 10
-  camera.updateProjectionMatrix()
+  mainCamera.init(
+    center,
+    center.clone().add(new THREE.Vector3(0, 0, fitDistance)),
+    distMin,
+    distMax
+  )
 })
 
-// animation loop
+// render loop
 function animate() {
-  if (globe) {
-    globe.rotation.y += 0.005
-  }
-  renderer.render(scene, camera)
+  renderer.render(globeScene.scene, mainCamera.camera)
   requestAnimationFrame(animate)
 }
-
 animate()
 
-// handle resize
+// resize
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight
-  camera.updateProjectionMatrix()
+  mainCamera.setAspect(window.innerWidth / window.innerHeight)
   renderer.setSize(window.innerWidth, window.innerHeight)
 })
