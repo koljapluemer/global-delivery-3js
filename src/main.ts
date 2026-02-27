@@ -5,6 +5,7 @@ import { GlobePointer } from './controller/globe_pointer'
 import { setupLogHoveredTile } from './view/debug/log_hovered_tile'
 import { TileCentersApi } from './controller/layer_0/tile_centers_api'
 import { GameItemStateManager } from './controller/layer_1/game_item_state_manager'
+import { DEMO_PLAN } from './model/db/demo_plan'
 import { GameItemRenderer } from './view/game/game_item_renderer'
 import { LabelRenderer } from './view/game/label_renderer'
 
@@ -15,7 +16,7 @@ document.body.appendChild(renderer.domElement)
 const globeScene = new GlobeScene()
 const mainCamera = new MainCamera(renderer.domElement)
 const tileCentersApi = new TileCentersApi()
-const gameItemStateManager = new GameItemStateManager()
+const gameItemStateManager = new GameItemStateManager(DEMO_PLAN)
 const gameItemRenderer = new GameItemRenderer(globeScene.scene)
 
 tileCentersApi.load()
