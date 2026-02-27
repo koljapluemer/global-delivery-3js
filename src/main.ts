@@ -4,6 +4,8 @@ import { MainCamera } from './view/camera/main_camera'
 import { GlobePointer } from './controller/globe_pointer'
 import { setupLogHoveredTile } from './view/debug/log_hovered_tile'
 import { TileCentersApi } from './controller/layer_0/tile_centers_api'
+import { GameItemStateManager } from './controller/layer_1/game_item_state_manager'
+import { GameItemRenderer } from './view/game/game_item_renderer'
 
 /** Closest the camera can get, as a multiple of the globe's bounding radius. */
 const ZOOM_MIN_RADIUS_FACTOR = 1.05
@@ -21,9 +23,10 @@ document.body.appendChild(renderer.domElement)
 const globeScene = new GlobeScene()
 const mainCamera = new MainCamera(renderer.domElement)
 
-// tile data
+// tile data & game state
 const tileCentersApi = new TileCentersApi()
 tileCentersApi.load()
+const gameItemStateManager = new GameItemStateManager()
 
 // load globe, then fit camera to its bounding sphere
 globeScene.load().then(({ boundingSphere }) => {
@@ -45,7 +48,9 @@ globeScene.load().then(({ boundingSphere }) => {
   )
 
   const pointer = new GlobePointer(renderer.domElement, mainCamera.camera, tileCentersApi, boundingSphere)
-  // setupLogHoveredTile(pointer)
+  setupLogHoveredTile(pointer)
+
+  new GameItemRenderer(globeScene.scene).render(gameItemStateManager, tileCentersApi, center)
 })
 
 // render loop

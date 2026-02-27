@@ -12,12 +12,14 @@ export interface TileCenter {
 
 export class TileCentersApi {
   private tiles: TileCenter[] = []
+  private tileMap = new Map<number, TileCenter>()
 
   load(): void {
     this.tiles = rawData
       .split('\n')
       .filter((line) => line.trim().length > 0)
       .map((line) => JSON.parse(line) as TileCenter)
+    this.tileMap = new Map(this.tiles.map((t) => [t.tile_id, t]))
   }
 
   getAll(): readonly TileCenter[] {
@@ -30,6 +32,10 @@ export class TileCentersApi {
 
   getWaterTiles(): readonly TileCenter[] {
     return this.tiles.filter((t) => !t.is_land)
+  }
+
+  getTileById(id: number): TileCenter | undefined {
+    return this.tileMap.get(id)
   }
 
   getByCountry(countryId: string): readonly TileCenter[] {

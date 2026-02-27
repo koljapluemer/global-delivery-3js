@@ -7,7 +7,7 @@ const ROTATION_SCALE_AT_MAX_ZOOM = 3.0
 /** Zoom step as a fraction of current distance when fully zoomed in (small = slow). */
 const ZOOM_SPEED_AT_MIN_DISTANCE = 0.005
 /** Zoom step as a fraction of current distance when fully zoomed out (larger = faster). */
-const ZOOM_SPEED_AT_MAX_DISTANCE = 0.05
+const ZOOM_SPEED_AT_MAX_DISTANCE = 0.2
 
 export class MainCamera {
   readonly camera: THREE.PerspectiveCamera
