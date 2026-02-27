@@ -1,7 +1,9 @@
 import * as THREE from 'three'
 import speechBubbleUrl from '../../assets/ui/speechbubble.png?url'
+import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { Timestep } from '../../model/types/Timestep'
+import type { Plan } from '../../model/types/Plan'
 
 /** Width of the horizon blend zone (fraction of R·|O−C|). ~6–8° of arc. */
 const HORIZON_BLEND_EPSILON = 0.1
@@ -39,6 +41,7 @@ interface LabelEntry {
 export class LabelRenderer {
   private container: HTMLDivElement
   private labels = new Map<number, LabelEntry>()
+  private pinLabels = new Map<string, LabelEntry>()
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -101,16 +104,66 @@ export class LabelRenderer {
     this.setCrateLabels(data)
   }
 
+  /** Sync pin labels to the destination tiles of every vehicle movement in the plan. */
+  syncPinsFromPlan(plan: Plan, tileApi: TileCentersApi, globeCenter: THREE.Vector3): void {
+    const data: Array<{ worldPosition: THREE.Vector3; label: string; id: string }> = []
+
+    for (let i = 1; i < plan.steps.length; i++) {
+      const prevStep = plan.steps[i - 1]
+      const currStep = plan.steps[i]
+
+      const prevTileByVehicleId = new Map<number, number>()
+      for (const [tileIdStr, occupant] of Object.entries(prevStep)) {
+        if (occupant.kind === 'Vehicle') {
+          prevTileByVehicleId.set(occupant.id, Number(tileIdStr))
+        }
+      }
+
+      for (const [tileIdStr, occupant] of Object.entries(currStep)) {
+        if (occupant.kind !== 'Vehicle') continue
+        const tileId = Number(tileIdStr)
+        if (prevTileByVehicleId.get(occupant.id) === tileId) continue
+        const tile = tileApi.getTileById(tileId)
+        if (!tile) continue
+        data.push({
+          worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
+          label: `#${i}`,
+          id: `${occupant.id}-${i}`,
+        })
+      }
+    }
+
+    const seen = new Set<string>()
+    for (const item of data) {
+      seen.add(item.id)
+      if (!this.pinLabels.has(item.id)) {
+        const { el, textEl } = this.createSmallBubble(item.label)
+        this.container.appendChild(el)
+        this.pinLabels.set(item.id, { el, textEl, worldPos: item.worldPosition.clone(), smoothRot: 0, })
+      }
+    }
+    for (const [id, entry] of this.pinLabels) {
+      if (!seen.has(id)) {
+        entry.el.remove()
+        this.pinLabels.delete(id)
+      }
+    }
+  }
+
   /** Call each frame with the elapsed time in seconds. */
   update(delta: number): void {
     for (const entry of this.labels.values()) {
       this.updateLabel(entry, delta)
+    }
+    for (const entry of this.pinLabels.values()) {
+      this.updatePinLabel(entry)
     }
   }
 
   dispose(): void {
     this.container.remove()
     this.labels.clear()
+    this.pinLabels.clear()
   }
 
   // ---------------------------------------------------------------------------
@@ -141,6 +194,33 @@ export class LabelRenderer {
       color: '#222',
       textAlign: 'center',
       lineHeight: '1.2',
+    })
+    el.appendChild(textEl)
+    return { el, textEl }
+  }
+
+  private createSmallBubble(label: string): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+    const el = document.createElement('div')
+    Object.assign(el.style, {
+      position: 'absolute',
+      width: '36px',
+      height: '28px',
+      backgroundImage: `url(${smallBubbleUrl})`,
+      backgroundSize: '100% 100%',
+      backgroundRepeat: 'no-repeat',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingBottom: '8px',
+    })
+    const textEl = document.createElement('span')
+    textEl.textContent = label
+    Object.assign(textEl.style, {
+      fontSize: '9px',
+      fontWeight: 'bold',
+      color: '#222',
+      textAlign: 'center',
+      lineHeight: '1',
     })
     el.appendChild(textEl)
     return { el, textEl }
@@ -193,6 +273,19 @@ export class LabelRenderer {
 
     // Keep inner text upright when the bubble is rotated past ±90°
     textEl.style.transform = Math.cos(smoothRot) < 0 ? 'rotate(180deg)' : ''
+  }
+
+  /** Position a pin label at its projected screen point, hidden when behind the horizon. */
+  private updatePinLabel(entry: LabelEntry): void {
+    const blend = this.getHorizonBlend(entry.worldPos)
+    entry.el.style.opacity = blend >= 1 ? '0' : String(1 - blend)
+    if (blend >= 1) return
+
+    const screen = this.worldToScreen(entry.worldPos)
+    entry.el.style.left = `${screen.x}px`
+    entry.el.style.top = `${screen.y}px`
+    entry.el.style.transformOrigin = '50% 100%'
+    entry.el.style.transform = 'translateX(-50%) translateY(-100%)'
   }
 
   /** Project a world position to pixel coordinates. Rounded to suppress subpixel jitter. */
