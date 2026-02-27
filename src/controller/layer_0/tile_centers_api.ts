@@ -1,4 +1,4 @@
-import rawData from './data/tile_centers.jsonl?raw'
+import rawData from './tile_centers.jsonl?raw'
 
 export interface TileCenter {
   tile_id: number
