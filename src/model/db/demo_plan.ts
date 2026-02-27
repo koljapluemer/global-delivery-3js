@@ -3,8 +3,8 @@ import type { Plan } from '../types/Plan'
 import type { Vehicle } from '../types/Vehicle'
 
 export const DEMO_VEHICLE_MANIFEST: Record<number, Vehicle> = {
-  0: { name: 'My small Car', vehicleType: AvailableVehicleTypes['basic_car'], hue: 23 },
-  1: { name: 'MS Boat', vehicleType: AvailableVehicleTypes['small_boat'], hue: 112 }
+  0: { name: 'My small Car', vehicleType: AvailableVehicleTypes['basic_car'], hue: 70 },
+  1: { name: 'MS Boat', vehicleType: AvailableVehicleTypes['small_boat'], hue: 150 }
 }
 
 

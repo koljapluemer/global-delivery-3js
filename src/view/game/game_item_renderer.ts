@@ -23,10 +23,43 @@ const PIN_SURFACE_OFFSET = -0.02
 
 /** How far to push route path lines above the surface, in world units. */
 const PATH_LINE_SURFACE_OFFSET = 0.0
-/** Color of the route path lines. */
-const PATH_LINE_COLOR = 0xffffff
 
 const UP = new THREE.Vector3(0, 1, 0)
+
+/**
+ * Convert a hue (0–360) with fixed S=60, V=60 (0–100 scale) to a Three.js Color.
+ * Uses HSV→HSL conversion since Three.js only exposes setHSL.
+ */
+function hsvColor(hue: number): THREE.Color {
+  const s = 0.8, v = 0.8
+  const l = v * (1 - s / 2)
+  const sl = (l === 0 || l === 1) ? 0 : (v - l) / Math.min(l, 1 - l)
+  return new THREE.Color().setHSL(hue / 360, sl, l)
+}
+
+/**
+ * Finds every mesh in `obj` whose material (or one of its materials) is named
+ * "PrimaryMaterial", clones that material, and overwrites its color.
+ * Cloning is required because GLB clones share the original material instances.
+ */
+function applyPrimaryColor(obj: THREE.Object3D, color: THREE.Color): void {
+  obj.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map((mat: THREE.Material) => {
+        if (mat.name !== 'PrimaryMaterial') return mat
+        const cloned = (mat as THREE.MeshStandardMaterial).clone()
+        cloned.color.copy(color)
+        return cloned
+      })
+    } else {
+      const mat = child.material as THREE.MeshStandardMaterial
+      if (mat.name !== 'PrimaryMaterial') return
+      child.material = mat.clone()
+      ;(child.material as THREE.MeshStandardMaterial).color.copy(color)
+    }
+  })
+}
 
 /** Maps VehicleType.meshPath values to their Vite-resolved asset URLs. */
 const VEHICLE_MESH_URLS: Record<string, string> = {
@@ -116,6 +149,7 @@ export class GameItemRenderer {
         obj.scale.setScalar(vehicleType.scale)
         obj.quaternion.setFromUnitVectors(UP, outwardNormal)
         obj.position.copy(tilePos).addScaledVector(outwardNormal, vehicleType.offsetAlongNormal)
+        applyPrimaryColor(obj, hsvColor(vehicle.hue))
 
         this.scene.add(obj)
         this.objects.push(obj)
@@ -158,6 +192,7 @@ export class GameItemRenderer {
         const vehicle = vehicles[occupant.id]
         if (!vehicle) continue
         const { vehicleType } = vehicle
+        const color = hsvColor(vehicle.hue)
 
         const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
         const outwardNormal = tilePos.clone().sub(globeCenter).normalize()
@@ -167,6 +202,7 @@ export class GameItemRenderer {
         pin.scale.setScalar(PIN_SCALE)
         pin.quaternion.setFromUnitVectors(UP, outwardNormal)
         pin.position.copy(tilePos).addScaledVector(outwardNormal, PIN_SURFACE_OFFSET)
+        applyPrimaryColor(pin, color)
         this.scene.add(pin)
         this.objects.push(pin)
 
@@ -174,7 +210,7 @@ export class GameItemRenderer {
         if (prevTileId !== undefined) {
           const path = this.navApi.findPath(prevTileId, tileId, vehicleType.navMesh)
           if (path && path.length > 1) {
-            this.drawRouteLine(path, tileApi, globeCenter, vehicleType.offsetAlongNormal)
+            this.drawRouteLine(path, tileApi, globeCenter, vehicleType.offsetAlongNormal, color)
           }
         }
       }
@@ -185,7 +221,8 @@ export class GameItemRenderer {
     pathTileIds: number[],
     tileApi: TileCentersApi,
     globeCenter: THREE.Vector3,
-    vehicleSurfaceOffset: number
+    vehicleSurfaceOffset: number,
+    color: THREE.Color,
   ): void {
     const surfaceOffset = vehicleSurfaceOffset + PATH_LINE_SURFACE_OFFSET
     const points: THREE.Vector3[] = []
@@ -199,7 +236,7 @@ export class GameItemRenderer {
     if (points.length < 2) return
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points)
-    const material = new THREE.LineBasicMaterial({ color: PATH_LINE_COLOR })
+    const material = new THREE.LineBasicMaterial({ color })
     const line = new THREE.Line(geometry, material)
     this.scene.add(line)
     this.objects.push(line)
