@@ -80,6 +80,7 @@ export class GameItemRenderer {
   private readonly scene: THREE.Scene
   private readonly navApi: NavApi
   private objects: THREE.Object3D[] = []
+  private pickables: THREE.Object3D[] = []
   private gltfCache = new Map<string, GLTF>()
 
   constructor(scene: THREE.Scene, navApi: NavApi) {
@@ -105,6 +106,11 @@ export class GameItemRenderer {
       this.scene.remove(obj)
     }
     this.objects = []
+    this.pickables = []
+  }
+
+  getPickableObjects(): readonly THREE.Object3D[] {
+    return this.pickables
   }
 
   // ---------------------------------------------------------------------------
@@ -135,9 +141,13 @@ export class GameItemRenderer {
         obj.scale.setScalar(CRATE_SCALE)
         obj.quaternion.setFromUnitVectors(UP, outwardNormal)
         obj.position.copy(tilePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)
+        const crateMeta = { entityType: 'CRATE', entityId: id }
+        obj.userData = crateMeta
+        obj.traverse((child) => { child.userData = crateMeta })
 
         this.scene.add(obj)
         this.objects.push(obj)
+        this.pickables.push(obj)
       } else if (kind === 'VEHICLE') {
         const vehicle = vehicles[id]
         if (!vehicle) {
@@ -156,9 +166,13 @@ export class GameItemRenderer {
         obj.quaternion.setFromUnitVectors(UP, outwardNormal)
         obj.position.copy(tilePos).addScaledVector(outwardNormal, vehicleType.offsetAlongNormal)
         applyPrimaryColor(obj, hsvColor(vehicle.hue))
+        const vehicleMeta = { entityType: 'VEHICLE', entityId: id }
+        obj.userData = vehicleMeta
+        obj.traverse((child) => { child.userData = vehicleMeta })
 
         this.scene.add(obj)
         this.objects.push(obj)
+        this.pickables.push(obj)
       }
     }
   }

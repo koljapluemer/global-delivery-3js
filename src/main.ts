@@ -10,6 +10,7 @@ import { DEMO_PLAN } from './model/db/demo_plan'
 import { GameItemRenderer } from './view/game/game_item_renderer'
 import { LabelRenderer } from './view/game/label_renderer'
 import { PlanPanel } from './view/ui/plan_panel/plan_panel'
+import { InspectorPanel } from './view/ui/inspector_panel/inspector_panel'
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
@@ -27,6 +28,30 @@ navApi.load()
 
 new PlanPanel(gameItemStateManager.getPlan(), tileCentersApi).mount(document.body)
 
+const inspectorPanel = new InspectorPanel()
+inspectorPanel.mount(document.body)
+
+renderer.domElement.addEventListener('click', (e) => {
+  const rect = renderer.domElement.getBoundingClientRect()
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
+  )
+  const raycaster = new THREE.Raycaster()
+  raycaster.setFromCamera(ndc, mainCamera.camera)
+  const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
+  if (hits.length === 0) { inspectorPanel.hide(); return }
+  const meta = hits[0].object.userData as { entityType?: string; entityId?: number }
+  if (!meta.entityType || meta.entityId === undefined) { inspectorPanel.hide(); return }
+  inspectorPanel.show(
+    meta.entityType === 'VEHICLE'
+      ? { kind: 'VEHICLE', id: meta.entityId }
+      : { kind: 'CRATE', id: meta.entityId },
+    gameItemStateManager.getPlan(),
+    tileCentersApi,
+  )
+})
+
 let labelRenderer: LabelRenderer | null = null
 
 globeScene.load().then(({ boundingSphere }) => {
@@ -38,6 +63,9 @@ globeScene.load().then(({ boundingSphere }) => {
   gameItemRenderer.render(gameItemStateManager, tileCentersApi, boundingSphere.center)
 
   labelRenderer = new LabelRenderer(mainCamera.camera, boundingSphere.center, boundingSphere.radius)
+  labelRenderer.onEntityClick = (target) => {
+    inspectorPanel.show(target, gameItemStateManager.getPlan(), tileCentersApi)
+  }
   const plan = gameItemStateManager.getPlan()
   labelRenderer.syncFromTimestep(plan.steps[0], plan.crates, tileCentersApi)
   labelRenderer.syncPinsFromPlan(plan, tileCentersApi)

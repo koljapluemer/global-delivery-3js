@@ -4,6 +4,7 @@ import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { Plan, Timestep } from '../../model/types/Plan'
 import type { Crate } from '../../model/types/Crate'
+import type { EntityTarget } from '../../model/types/EntityTarget'
 
 /** Width of the horizon blend zone (fraction of R·|O−C|). ~6–8° of arc. */
 const HORIZON_BLEND_EPSILON = 0.1
@@ -42,6 +43,7 @@ export class LabelRenderer {
   private readonly camera: THREE.PerspectiveCamera
   private readonly globeCenter: THREE.Vector3
   private readonly globeRadius: number
+  onEntityClick: ((target: EntityTarget) => void) | null = null
   private container: HTMLDivElement
   private labels = new Map<number, LabelEntry>()
   private pinLabels = new Map<string, LabelEntry>()
@@ -70,7 +72,7 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.entityId)
       if (!this.labels.has(item.entityId)) {
-        const { el, textEl } = this.createBubble(item.destinationCountry)
+        const { el, textEl } = this.createBubble(item.destinationCountry, item.entityId)
         this.container.appendChild(el)
         this.labels.set(item.entityId, {
           el,
@@ -113,7 +115,7 @@ export class LabelRenderer {
 
   /** Sync pin labels to the destination tiles of every vehicle movement in the plan. */
   syncPinsFromPlan(plan: Plan, tileApi: TileCentersApi): void {
-    const data: Array<{ worldPosition: THREE.Vector3; label: string; id: string }> = []
+    const data: Array<{ worldPosition: THREE.Vector3; label: string; id: string; vehicleId: number }> = []
 
     for (let i = 1; i < plan.steps.length; i++) {
       const prevStep = plan.steps[i - 1]
@@ -137,6 +139,7 @@ export class LabelRenderer {
           worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
           label: `#${i}`,
           id: `${id}-${i}`,
+          vehicleId: id,
         })
       }
     }
@@ -145,7 +148,7 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.id)
       if (!this.pinLabels.has(item.id)) {
-        const { el, textEl } = this.createSmallBubble(item.label)
+        const { el, textEl } = this.createSmallBubble(item.label, item.vehicleId)
         this.container.appendChild(el)
         this.pinLabels.set(item.id, { el, textEl, worldPos: item.worldPosition.clone(), smoothRot: 0, })
       }
@@ -178,7 +181,7 @@ export class LabelRenderer {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private createBubble(destination: string): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createBubble(destination: string, entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',
@@ -192,6 +195,12 @@ export class LabelRenderer {
       justifyContent: 'center',
       // Reserve vertical space for the tail at the bottom
       paddingBottom: '14px',
+      pointerEvents: 'auto',
+      cursor: 'pointer',
+    })
+    el.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.onEntityClick?.({ kind: 'CRATE', id: entityId })
     })
 
     const textEl = document.createElement('span')
@@ -207,7 +216,7 @@ export class LabelRenderer {
     return { el, textEl }
   }
 
-  private createSmallBubble(label: string): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createSmallBubble(label: string, vehicleId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',
@@ -220,6 +229,12 @@ export class LabelRenderer {
       alignItems: 'center',
       justifyContent: 'center',
       paddingBottom: '8px',
+      pointerEvents: 'auto',
+      cursor: 'pointer',
+    })
+    el.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.onEntityClick?.({ kind: 'VEHICLE', id: vehicleId })
     })
     const textEl = document.createElement('span')
     textEl.textContent = label
