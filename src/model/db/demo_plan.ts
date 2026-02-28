@@ -63,13 +63,13 @@ export const DEMO_PLAN: Plan = {
     },
     {
       tileOccupations: {
-        28068: ['CRATE', 0],
         28067: ['VEHICLE', 0],
         20604: ['CRATE', 2],
         20558: ['VEHICLE', 1],
       },
       transportedCargo: {
-        1: 0
+        1: 0,
+        0: 0
       }
     },
 
@@ -78,11 +78,12 @@ export const DEMO_PLAN: Plan = {
         39710: ['VEHICLE', 0],
         20604: ['CRATE', 2],
         20558: ['VEHICLE', 1],
+        39748: ['CRATE', 0],
+        39673: ['CRATE', 1]
       },
       transportedCargo: {
-        1: 0,
-        0: 0
       }
+      
     },
   ],
 }

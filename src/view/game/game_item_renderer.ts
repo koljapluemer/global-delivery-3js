@@ -30,6 +30,9 @@ const CARGO_ARROW_SCALE = 0.035
 /** How far to push cargo arrows along the tile's outward surface normal, in world units. */
 const CARGO_ARROW_SURFACE_OFFSET = 0.005
 
+/** Opacity for ghost crates rendered at unloading destinations. */
+const GHOST_CRATE_OPACITY = 0.1
+
 const UP = new THREE.Vector3(0, 1, 0)
 
 /**
@@ -94,6 +97,7 @@ export class GameItemRenderer {
     await this.renderTimestep(plan.steps[stepIndex], plan.crates, plan.vehicles, tileApi, globeCenter)
     await this.renderVehicleMovementPins(plan, tileApi, globeCenter)
     await this.renderCargoLoadingArrows(plan, tileApi, globeCenter)
+    await this.renderCargoUnloadingEffects(plan, tileApi, globeCenter)
   }
 
   dispose(): void {
@@ -287,6 +291,97 @@ export class GameItemRenderer {
         applyPrimaryColor(arrow, hsvColor(vehicle.hue))
         this.scene.add(arrow)
         this.objects.push(arrow)
+      }
+    }
+  }
+
+  /**
+   * A crate is unloaded in step i when it was in step[i-1].transportedCargo but absent
+   * from step[i].transportedCargo and present in step[i].tileOccupations.
+   * Place a rounded_arrow.glb at the vehicle's tile in step[i], pointing toward the crate's
+   * tile in step[i]. Also place a semi-transparent ghost crate at that tile.
+   */
+  private async renderCargoUnloadingEffects(
+    plan: Plan,
+    tileApi: TileCentersApi,
+    globeCenter: THREE.Vector3
+  ): Promise<void> {
+    const { steps } = plan
+    for (let i = 1; i < steps.length; i++) {
+      const prevStep = steps[i - 1]
+      const currStep = steps[i]
+
+      // Build crateId → tileId from currStep (where the crate landed after unloading)
+      const crateTileInCurr = new Map<number, number>()
+      for (const [tileIdStr, occupant] of Object.entries(currStep.tileOccupations)) {
+        if (occupant[0] === 'CRATE') {
+          crateTileInCurr.set(occupant[1], Number(tileIdStr))
+        }
+      }
+
+      // Build vehicleId → tileId from currStep
+      const vehicleTileInCurr = new Map<number, number>()
+      for (const [tileIdStr, occupant] of Object.entries(currStep.tileOccupations)) {
+        if (occupant[0] === 'VEHICLE') {
+          vehicleTileInCurr.set(occupant[1], Number(tileIdStr))
+        }
+      }
+
+      // Find crates that were transported in prevStep but not in currStep
+      for (const [crateIdStr, vehicleId] of Object.entries(prevStep.transportedCargo)) {
+        const crateId = Number(crateIdStr)
+        if (crateId in currStep.transportedCargo) continue  // still being carried
+        const crateTileId = crateTileInCurr.get(crateId)
+        if (crateTileId === undefined) continue              // not on tiles in currStep either
+        const vehicleTileId = vehicleTileInCurr.get(vehicleId)
+        if (vehicleTileId === undefined) continue            // vehicle not visible in currStep
+
+        const vehicle = plan.vehicles[vehicleId]
+        if (!vehicle) continue
+
+        const crateTile = tileApi.getTileById(crateTileId)
+        const vehicleTile = tileApi.getTileById(vehicleTileId)
+        if (!crateTile || !vehicleTile) continue
+
+        const cratePos = new THREE.Vector3(crateTile.x, crateTile.z, -crateTile.y)
+        const vehiclePos = new THREE.Vector3(vehicleTile.x, vehicleTile.z, -vehicleTile.y)
+
+        // Arrow at vehicle's tile pointing toward crate's tile (Z+ = pointing direction)
+        const yAxis = vehiclePos.clone().sub(globeCenter).normalize()
+        const toCrate = cratePos.clone().sub(vehiclePos)
+        const zAxis = toCrate.clone().sub(yAxis.clone().multiplyScalar(toCrate.dot(yAxis))).normalize()
+        const xAxis = new THREE.Vector3().crossVectors(yAxis, zAxis)
+
+        const arrow = (await this.loadGltf(roundedArrowUrl)).scene.clone()
+        arrow.scale.setScalar(CARGO_ARROW_SCALE)
+        arrow.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis))
+        arrow.position.copy(vehiclePos).addScaledVector(yAxis, CARGO_ARROW_SURFACE_OFFSET)
+        applyPrimaryColor(arrow, hsvColor(vehicle.hue))
+        this.scene.add(arrow)
+        this.objects.push(arrow)
+
+        // Ghost crate at the unloaded tile
+        const crateOutwardNormal = cratePos.clone().sub(globeCenter).normalize()
+        const ghost = (await this.loadGltf(crateUrl)).scene.clone()
+        ghost.scale.setScalar(CRATE_SCALE)
+        ghost.quaternion.setFromUnitVectors(UP, crateOutwardNormal)
+        ghost.position.copy(cratePos).addScaledVector(crateOutwardNormal, CRATE_SURFACE_OFFSET)
+        ghost.traverse((child) => {
+          if (!(child instanceof THREE.Mesh)) return
+          const applyOpacity = (mat: THREE.Material) => {
+            const cloned = (mat as THREE.MeshStandardMaterial).clone()
+            cloned.transparent = true
+            cloned.opacity = GHOST_CRATE_OPACITY
+            return cloned
+          }
+          if (Array.isArray(child.material)) {
+            child.material = child.material.map(applyOpacity)
+          } else {
+            child.material = applyOpacity(child.material)
+          }
+        })
+        this.scene.add(ghost)
+        this.objects.push(ghost)
       }
     }
   }
