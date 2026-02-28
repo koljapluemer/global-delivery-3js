@@ -9,6 +9,7 @@ import { NavApi } from './controller/navigation'
 import { DEMO_PLAN } from './model/db/demo_plan'
 import { GameItemRenderer } from './view/game/game_item_renderer'
 import { LabelRenderer } from './view/game/label_renderer'
+import { PlanPanel } from './view/ui/plan_panel/plan_panel'
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
@@ -23,6 +24,8 @@ const gameItemRenderer = new GameItemRenderer(globeScene.scene, navApi)
 
 tileCentersApi.load()
 navApi.load()
+
+new PlanPanel(gameItemStateManager.getPlan(), tileCentersApi).mount(document.body)
 
 let labelRenderer: LabelRenderer | null = null
 
