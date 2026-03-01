@@ -5,6 +5,9 @@ import type { InspectionContent, StepEntry } from './types'
 import { inspectEntity } from './entity_inspector'
 
 export class InspectorPanel {
+  /** Called when the user clicks "Add Pin to Route" for a vehicle. */
+  onAddPin: ((vehicleId: number) => void) | null = null
+
   private aside: HTMLElement | null = null
   private body: HTMLElement | null = null
 
@@ -41,7 +44,7 @@ export class InspectorPanel {
     if (!this.aside || !this.body) return
     const content = inspectEntity(target, plan, tileApi)
     this.body.innerHTML = ''
-    this.renderContent(content, this.body)
+    this.renderContent(content, target, this.body)
     this.aside.style.display = 'block'
   }
 
@@ -49,7 +52,7 @@ export class InspectorPanel {
     if (this.aside) this.aside.style.display = 'none'
   }
 
-  private renderContent(content: InspectionContent, container: HTMLElement): void {
+  private renderContent(content: InspectionContent, target: EntityTarget, container: HTMLElement): void {
     const heading = document.createElement('h2')
     heading.textContent = content.kind === 'VEHICLE'
       ? content.name
@@ -79,6 +82,16 @@ export class InspectorPanel {
 
     if (content.stepEntries.length > 0) {
       container.appendChild(this.buildStepList(content.stepEntries))
+    }
+
+    if (content.kind === 'VEHICLE') {
+      const btn = document.createElement('button')
+      btn.textContent = 'Add Pin to Route'
+      Object.assign(btn.style, { marginTop: '0.75rem', display: 'block' })
+      btn.addEventListener('click', () => {
+        if (target.kind === 'VEHICLE') this.onAddPin?.(target.id)
+      })
+      container.appendChild(btn)
     }
   }
 

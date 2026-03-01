@@ -6,6 +6,7 @@ import { derivePlanSummary } from './plan_event_deriver'
 export class PlanPanel {
   private readonly plan: Plan
   private readonly tileApi: TileCentersApi
+  private aside: HTMLElement | null = null
 
   constructor(plan: Plan, tileApi: TileCentersApi) {
     this.plan = plan
@@ -13,11 +14,6 @@ export class PlanPanel {
   }
 
   mount(container: HTMLElement): void {
-    const summaries = derivePlanSummary(this.plan, this.tileApi)
-    container.appendChild(this.buildPanel(summaries))
-  }
-
-  private buildPanel(summaries: readonly StepSummary[]): HTMLElement {
     const aside = document.createElement('aside')
     Object.assign(aside.style, {
       position: 'fixed',
@@ -30,12 +26,21 @@ export class PlanPanel {
       color: '#fff',
       zIndex: '10',
     })
+    this.aside = aside
+    container.appendChild(aside)
+    this.rebuild()
+  }
 
+  /** Re-derive plan summary and repopulate the panel. */
+  update(): void { this.rebuild() }
+
+  private rebuild(): void {
+    if (!this.aside) return
+    this.aside.innerHTML = ''
+    const summaries = derivePlanSummary(this.plan, this.tileApi)
     for (const summary of summaries) {
-      aside.appendChild(this.buildStepSection(summary))
+      this.aside.appendChild(this.buildStepSection(summary))
     }
-
-    return aside
   }
 
   private buildStepSection(summary: StepSummary): HTMLElement {
