@@ -1,11 +1,14 @@
 import type { Plan, Timestep } from '../../model/types/Plan'
 import type { StepAction } from '../../model/types/StepAction'
+import type { NavApi } from '../navigation'
 
 export class GameItemStateManager {
   private readonly plan: Plan
+  private readonly navApi: NavApi
 
-  constructor(plan: Plan) {
+  constructor(plan: Plan, navApi: NavApi) {
     this.plan = plan
+    this.navApi = navApi
   }
 
   getPlan(): Plan { return this.plan }
@@ -93,7 +96,9 @@ export class GameItemStateManager {
     const crateTile = this.findCrateTile(curr, crateId)
     if (crateTile === undefined) return
     const vehicleTile = this.findVehicleTile(curr, vehicleId)
-    if (vehicleTile !== crateTile) return  // vehicle must be co-located
+    if (vehicleTile === undefined) return
+    const navMesh = this.plan.vehicles[vehicleId]?.vehicleType.navMesh
+    if (!navMesh || !this.navApi.getNeighbors(crateTile, navMesh).includes(vehicleTile)) return
 
     const occ = { ...curr.tileOccupations }
     delete occ[crateTile]
@@ -218,9 +223,9 @@ export class GameItemStateManager {
   /**
    * Walk forward from `startStep`, ensuring crateId appears on the ground at
    * `groundTile` (not in any cargo) in every subsequent step — until an
-   * *independent* re-load is detected (the loading vehicle was co-located with
-   * the crate at groundTile in the preceding step, meaning it's a deliberate
-   * new action that must survive).
+   * *independent* re-load is detected (the preceding step did NOT have the crate
+   * in cargo, meaning it appeared in cargo without a prior carry → genuine new
+   * user load that must survive).
    */
   private propagateCrateToGround(
     startStep: number,
@@ -228,44 +233,35 @@ export class GameItemStateManager {
     vehicleId: number,
     groundTile: number,
   ): void {
+    // The step just before startStep was just modified to REMOVE cargo; its original
+    // state DID have cargo — that's why we're propagating. Start with true.
+    let prevOriginallyHadCargo = true
+
     for (let j = startStep; j < this.plan.steps.length; j++) {
-      const prev = this.plan.steps[j - 1]
       const curr = this.plan.steps[j]
 
       if (crateId in curr.transportedCargo) {
-        const carrierNow = curr.transportedCargo[crateId]
-
-        if (carrierNow !== vehicleId) {
-          // A different vehicle is carrying the crate — independent transfer. Stop.
-          return
-        }
-
-        // Same vehicle. Independent load iff the vehicle was co-located with the
-        // crate at groundTile in the preceding (already-fixed) step.
-        const prevVehicleTile = this.findVehicleTile(prev, vehicleId)
-        const prevCrateTile   = this.findCrateTile(prev, crateId)
-        if (prevVehicleTile !== undefined && prevVehicleTile === prevCrateTile) {
-          // Vehicle was on the crate's tile — genuine new load action. Stop.
-          return
-        }
+        if (curr.transportedCargo[crateId] !== vehicleId) { return }  // different vehicle: stop
+        if (!prevOriginallyHadCargo) { return }                        // genuine new load: stop
 
         // Stale carry-forward: remove from cargo, restore crate to ground.
         const cargo = { ...curr.transportedCargo }
         delete cargo[crateId]
         const occ = { ...curr.tileOccupations, [groundTile]: ['CRATE', crateId] as ['CRATE', number] }
         this.plan.steps[j] = { tileOccupations: occ, transportedCargo: cargo }
+        prevOriginallyHadCargo = true  // curr originally had cargo
 
       } else {
         const crateTile = this.findCrateTile(curr, crateId)
-        if (crateTile === undefined) return  // crate disappeared — stop
+        if (crateTile === undefined) return           // crate gone: stop
+        if (crateTile === groundTile) { prevOriginallyHadCargo = false; continue }
 
-        if (crateTile === groundTile) continue  // already correct; keep scanning for later stale steps
-
-        // Crate is on a wrong tile — orphaned unload artifact. Fix it.
+        // Wrong tile — orphaned unload artifact: fix it.
         const occ = { ...curr.tileOccupations }
         delete occ[crateTile]
         occ[groundTile] = ['CRATE', crateId]
         this.plan.steps[j] = { ...curr, tileOccupations: occ }
+        prevOriginallyHadCargo = false  // curr originally had crate on ground
       }
     }
   }
@@ -273,8 +269,8 @@ export class GameItemStateManager {
   /**
    * Walk forward from `startStep`, ensuring crateId stays in `vehicleId`'s
    * transportedCargo in every subsequent step — until an *independent* unload is
-   * detected (the vehicle was co-located with the drop tile in the preceding
-   * step) or another vehicle takes the crate.
+   * detected (the vehicle is adjacent to the drop tile in the current step,
+   * meaning this is a deliberate unload action) or another vehicle takes the crate.
    */
   private propagateCrateToVehicle(
     startStep: number,
@@ -282,7 +278,6 @@ export class GameItemStateManager {
     vehicleId: number,
   ): void {
     for (let j = startStep; j < this.plan.steps.length; j++) {
-      const prev = this.plan.steps[j - 1]
       const curr = this.plan.steps[j]
 
       if (crateId in curr.transportedCargo) {
@@ -297,11 +292,13 @@ export class GameItemStateManager {
       const crateTile = this.findCrateTile(curr, crateId)
       if (crateTile === undefined) return  // crate disappeared — stop
 
-      // Crate is on the ground. Independent unload iff the vehicle was at the
-      // drop tile in the preceding (already-fixed) step.
-      const prevVehicleTile = this.findVehicleTile(prev, vehicleId)
-      if (prevVehicleTile === crateTile) {
-        // Vehicle was at the drop tile — genuine new unload action. Stop.
+      // Crate is on the ground. Independent unload iff the vehicle is adjacent
+      // to the drop tile in the current step.
+      const currVehicleTile = this.findVehicleTile(curr, vehicleId)
+      const navMesh = this.plan.vehicles[vehicleId]?.vehicleType.navMesh
+      if (currVehicleTile !== undefined && navMesh !== undefined &&
+          this.navApi.getNeighbors(crateTile, navMesh).includes(currVehicleTile)) {
+        // Vehicle is adjacent to drop tile in current step — genuine unload: stop.
         return
       }
 

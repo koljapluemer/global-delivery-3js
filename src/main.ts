@@ -30,7 +30,7 @@ const globeScene = new GlobeScene()
 const mainCamera = new MainCamera(renderer.domElement)
 const tileCentersApi = new TileCentersApi()
 const navApi = new NavApi()
-const stateManager = new GameItemStateManager(DEMO_PLAN)
+const stateManager = new GameItemStateManager(DEMO_PLAN, navApi)
 const gameItemRenderer = new GameItemRenderer(globeScene.scene, navApi, renderer)
 const inputModeController = new InputModeController()
 const cancelButton = new CancelButton()
@@ -50,7 +50,7 @@ let labelRenderer: LabelRenderer | null = null
 let pinPlacementPreview: PinPlacementPreview | null = null
 let crateDropPreview: CrateDropPreview | null = null
 let crateLoadPreview: CrateLoadPreview | null = null
-let lastValidLoadTarget: { vehicleId: number } | null = null
+let lastValidLoadTarget: { vehicleId: number; loadAtStep: number } | null = null
 const pinContextMenu = new PinContextMenu()
 pinContextMenu.mount(document.body)
 const crateLoadMenu = new CrateLoadMenu()
@@ -226,7 +226,7 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
 
   if (mode.kind === 'CRATE_LOAD') {
     if (!dragged && lastValidLoadTarget) {
-      stateManager.addCrateLoad(mode.stepIndex, mode.crateId, lastValidLoadTarget.vehicleId)
+      stateManager.addCrateLoad(lastValidLoadTarget.loadAtStep, mode.crateId, lastValidLoadTarget.vehicleId)
       crateLoadPreview?.hide()
       await rerender()
       inspectorPanel.show({ kind: 'VEHICLE', id: lastValidLoadTarget.vehicleId }, stateManager.getPlan(), tileCentersApi)
@@ -281,21 +281,47 @@ renderer.domElement.addEventListener('mousemove', (e) => {
   const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
 
   if (mode.kind === 'CRATE_LOAD') {
-    const hitMeta = hits[0]?.object?.userData as { entityType?: string; entityId?: number; vehicleId?: number; stepIndex?: number } | undefined
+    const hitMeta = hits[0]?.object?.userData as
+      { entityType?: string; entityId?: number; vehicleId?: number; stepIndex?: number } | undefined
+
+    // Determine candidate vehicleId and the step at which loading would occur.
+    // For a VEHICLE entity (rendered at step 0): loading happens at the crate's arrival step.
+    // For a PIN entity: loading happens at the pin's step (must be >= crate's arrival step).
     let vehicleId: number | undefined
+    let loadAtStep: number | undefined
     if (hitMeta?.entityType === 'VEHICLE') {
       vehicleId = hitMeta.entityId
-    } else if (hitMeta?.entityType === 'PIN' && hitMeta.stepIndex === mode.stepIndex) {
+      loadAtStep = mode.stepIndex
+    } else if (hitMeta?.entityType === 'PIN' &&
+               hitMeta.stepIndex !== undefined &&
+               hitMeta.stepIndex >= mode.stepIndex) {
       vehicleId = hitMeta.vehicleId
+      loadAtStep = hitMeta.stepIndex
     }
+
+    // Valid iff: crate is still at its tile at the load step (not yet loaded by another action)
+    //        AND the vehicle is on an exactly neighboring tile at the load step.
+    const plan = stateManager.getPlan()
+    const crateStillThere = loadAtStep !== undefined &&
+      plan.steps[loadAtStep]?.tileOccupations[mode.crateTileId]?.[1] === mode.crateId
+    const vehicleTileAtLoad = vehicleId !== undefined && loadAtStep !== undefined
+      ? stateManager.getVehicleTileAtStep(vehicleId, loadAtStep)
+      : undefined
+    const navMesh = vehicleId !== undefined
+      ? plan.vehicles[vehicleId]?.vehicleType.navMesh
+      : undefined
     const valid = vehicleId !== undefined &&
-      stateManager.getVehicleTileAtStep(vehicleId, mode.stepIndex) === mode.crateTileId
-    lastValidLoadTarget = valid ? { vehicleId: vehicleId! } : null
+      loadAtStep !== undefined &&
+      crateStillThere &&
+      vehicleTileAtLoad !== undefined &&
+      navMesh !== undefined &&
+      navApi.getNeighbors(mode.crateTileId, navMesh).includes(vehicleTileAtLoad)
+
+    lastValidLoadTarget = valid ? { vehicleId: vehicleId!, loadAtStep: loadAtStep! } : null
     gameItemRenderer.setHovered(valid ? hits[0].object : null)
     if (valid) {
-      const vehicleTileId = stateManager.getVehicleTileAtStep(vehicleId!, mode.stepIndex)!
-      const hue = stateManager.getPlan().vehicles[vehicleId!]?.hue ?? 0
-      crateLoadPreview?.update(mode.crateTileId, vehicleTileId, hue, globeCenter, tileCentersApi)
+      const hue = plan.vehicles[vehicleId!]?.hue ?? 0
+      crateLoadPreview?.update(mode.crateTileId, vehicleTileAtLoad!, hue, globeCenter, tileCentersApi)
     } else {
       crateLoadPreview?.hide()
     }
