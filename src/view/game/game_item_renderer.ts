@@ -54,6 +54,8 @@ export class GameItemRenderer {
   private objects: THREE.Object3D[] = []
   private pickables: THREE.Object3D[] = []
   private gltfCache = new Map<string, GLTF>()
+  private hoveredPickable: THREE.Object3D | null = null
+  private hoveredLineOrigColor: THREE.Color | null = null
 
   constructor(scene: THREE.Scene, navApi: NavApi, renderer: THREE.WebGLRenderer) {
     this.scene = scene
@@ -75,6 +77,8 @@ export class GameItemRenderer {
   }
 
   dispose(): void {
+    this.hoveredPickable = null
+    this.hoveredLineOrigColor = null
     for (const obj of this.objects) {
       this.scene.remove(obj)
       // Dispose geometry/material for Line2 and similar GPU-owned resources
@@ -91,9 +95,66 @@ export class GameItemRenderer {
     return this.pickables
   }
 
+  /**
+   * Highlight the pickable object under the cursor (pass null to clear).
+   * Resolves the hit child mesh up to its pickable root before applying.
+   */
+  setHovered(hitObject: THREE.Object3D | null): void {
+    const root = hitObject ? this.findPickableRoot(hitObject) : null
+    if (root === this.hoveredPickable) return
+    if (this.hoveredPickable) this.applyHoverHighlight(this.hoveredPickable, false)
+    this.hoveredPickable = root
+    if (root) this.applyHoverHighlight(root, true)
+  }
+
   // ---------------------------------------------------------------------------
   // Private
   // ---------------------------------------------------------------------------
+
+  /** Walk up the scene graph until we find an object that lives in this.pickables. */
+  private findPickableRoot(obj: THREE.Object3D): THREE.Object3D {
+    let cur: THREE.Object3D | null = obj
+    while (cur) {
+      if (this.pickables.includes(cur)) return cur
+      cur = cur.parent
+    }
+    return obj
+  }
+
+  /**
+   * Apply or remove the hover highlight.
+   * - GLTF meshes (vehicles, crates, pins): emissive white glow.
+   * - Line2 route lines: colour lerped toward white (original stored for restore).
+   */
+  private applyHoverHighlight(root: THREE.Object3D, on: boolean): void {
+    if (root instanceof Line2) {
+      const mat = root.material as LineMaterial
+      // renderOrder = 1 ensures the highlighted line renders after all default (0) lines,
+      // winning depth-buffer ties with co-planar overlapping route segments.
+      root.renderOrder = on ? 1 : 0
+      if (on) {
+        this.hoveredLineOrigColor = mat.color.clone()
+        mat.color.lerp(new THREE.Color(1, 1, 1), 0.4)
+      } else {
+        if (this.hoveredLineOrigColor) {
+          mat.color.copy(this.hoveredLineOrigColor)
+          this.hoveredLineOrigColor = null
+        }
+      }
+      return
+    }
+
+    root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      for (const mat of mats) {
+        const m = mat as THREE.MeshStandardMaterial
+        if (!('emissive' in m)) continue
+        m.emissive.set(on ? 0xffffff : 0x000000)
+        m.emissiveIntensity = on ? 0.3 : 0
+      }
+    })
+  }
 
   private async renderTimestep(
     timestep: Timestep,

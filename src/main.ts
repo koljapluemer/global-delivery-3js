@@ -98,6 +98,7 @@ inputModeController.onChange((mode) => {
     mode.kind === 'PIN_PLACEMENT' ? 'crosshair' :
     (mode.kind === 'PIN_DRAG' || mode.kind === 'ROUTE_SPLIT') ? 'grabbing' : ''
   if (mode.kind === 'NORMAL') pinPlacementPreview?.hide()
+  if (mode.kind !== 'NORMAL') gameItemRenderer.setHovered(null)
 })
 
 // ---------------------------------------------------------------------------
@@ -183,6 +184,17 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
       inspectorPanel.hide()
     }
   }
+})
+
+// ---------------------------------------------------------------------------
+// Hover highlight: raycast pickables on every mousemove (NORMAL mode only)
+// ---------------------------------------------------------------------------
+renderer.domElement.addEventListener('mousemove', (e) => {
+  if (inputModeController.getMode().kind !== 'NORMAL') return
+  const raycaster = new THREE.Raycaster()
+  raycaster.setFromCamera(ndcFromEvent(e, renderer.domElement), mainCamera.camera)
+  const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
+  gameItemRenderer.setHovered(hits[0]?.object ?? null)
 })
 
 // ---------------------------------------------------------------------------
