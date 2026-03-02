@@ -141,6 +141,7 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
     }
     pinPlacementPreview?.hide()
     await rerender()
+    inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, stateManager.getPlan(), tileCentersApi)
     inputModeController.enterNormal()
     return
   }
@@ -151,6 +152,7 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
     }
     pinPlacementPreview?.hide()
     await rerender()
+    inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, stateManager.getPlan(), tileCentersApi)
     inputModeController.enterNormal()
     return
   }
