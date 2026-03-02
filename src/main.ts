@@ -13,7 +13,9 @@ import { PlanPanel } from './view/ui/plan_panel/plan_panel'
 import { InspectorPanel } from './view/ui/inspector_panel/inspector_panel'
 import { InputModeController } from './controller/input_mode/input_mode'
 import { PinPlacementPreview } from './view/game/pin_placement_preview'
+import { CrateDropPreview } from './view/game/crate_drop_preview'
 import { CancelButton } from './view/ui/overlay/cancel_button'
+import { PinContextMenu } from './view/ui/overlay/pin_context_menu'
 import { hsvColor } from './view/game/color_utils'
 import type { TileCenter } from './controller/layer_0/tile_centers_api'
 import type { StepAction } from './model/types/StepAction'
@@ -44,6 +46,9 @@ cancelButton.mount(document.body, () => inputModeController.enterNormal())
 
 let labelRenderer: LabelRenderer | null = null
 let pinPlacementPreview: PinPlacementPreview | null = null
+let crateDropPreview: CrateDropPreview | null = null
+const pinContextMenu = new PinContextMenu()
+pinContextMenu.mount(document.body)
 let lastHoveredTile: TileCenter | null = null
 let globeCenter = new THREE.Vector3()
 let mousedownPos: { x: number; y: number } | null = null
@@ -93,11 +98,15 @@ planPanel.onRemoveAction = handleRemoveAction
 // Sync UI / cursor when input mode changes
 // ---------------------------------------------------------------------------
 inputModeController.onChange((mode) => {
-  cancelButton[mode.kind === 'PIN_PLACEMENT' ? 'show' : 'hide']()
+  cancelButton[mode.kind === 'PIN_PLACEMENT' || mode.kind === 'CRATE_DROP' ? 'show' : 'hide']()
   renderer.domElement.style.cursor =
-    mode.kind === 'PIN_PLACEMENT' ? 'crosshair' :
+    mode.kind === 'PIN_PLACEMENT' || mode.kind === 'CRATE_DROP' ? 'crosshair' :
     (mode.kind === 'PIN_DRAG' || mode.kind === 'ROUTE_SPLIT') ? 'grabbing' : ''
-  if (mode.kind === 'NORMAL') pinPlacementPreview?.hide()
+  if (mode.kind === 'NORMAL') {
+    pinPlacementPreview?.hide()
+    crateDropPreview?.hide()
+    pinContextMenu.hide()
+  }
   if (mode.kind !== 'NORMAL') gameItemRenderer.setHovered(null)
 })
 
@@ -136,7 +145,35 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
   mousedownPos = null
 
   if (mode.kind === 'PIN_DRAG') {
-    if (dragged && lastHoveredTile) {
+    if (!dragged) {
+      // Click (not drag) → open context menu above the pin
+      pinPlacementPreview?.hide()
+      inputModeController.enterNormal()
+      pinContextMenu.show(
+        mode.vehicleId, mode.stepIndex,
+        stateManager.getPlan(), tileCentersApi,
+        e.clientX, e.clientY,
+        {
+          onUnload: (crateId) => {
+            labelRenderer?.setPinLabelOffset(mode.vehicleId, mode.stepIndex, 0)
+            pinContextMenu.hide()
+            inputModeController.enterCrateDrop(mode.vehicleId, mode.stepIndex, crateId)
+          },
+          onRemoveUnload: async (crateId) => {
+            labelRenderer?.setPinLabelOffset(mode.vehicleId, mode.stepIndex, 0)
+            stateManager.removeAction(mode.stepIndex, { kind: 'CRATE_UNLOADED', crateId })
+            pinContextMenu.hide()
+            await rerender()
+            inspectorPanel.refresh(stateManager.getPlan(), tileCentersApi)
+          },
+          onClose: () => labelRenderer?.setPinLabelOffset(mode.vehicleId, mode.stepIndex, 0),
+        },
+      )
+      labelRenderer?.setPinLabelOffset(mode.vehicleId, mode.stepIndex, 80)
+      return
+    }
+    // Drag → move the pin
+    if (lastHoveredTile) {
       stateManager.moveVehicleStep(mode.vehicleId, mode.stepIndex, lastHoveredTile.tile_id)
     }
     pinPlacementPreview?.hide()
@@ -154,6 +191,26 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
     await rerender()
     inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, stateManager.getPlan(), tileCentersApi)
     inputModeController.enterNormal()
+    return
+  }
+
+  if (mode.kind === 'CRATE_DROP') {
+    if (lastHoveredTile) {
+      const plan = stateManager.getPlan()
+      const vehicleTileId = stateManager.getVehicleTileAtStep(mode.vehicleId, mode.stepIndex)
+      const isValid = lastHoveredTile.is_land &&
+        plan.steps[mode.stepIndex]?.tileOccupations[lastHoveredTile.tile_id] === undefined &&
+        vehicleTileId !== undefined &&
+        navApi.getNeighbors(vehicleTileId, 'ALL').includes(lastHoveredTile.tile_id)
+      if (isValid) {
+        stateManager.addCrateUnload(mode.stepIndex, mode.crateId, lastHoveredTile.tile_id)
+        crateDropPreview?.hide()
+        await rerender()
+        inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, stateManager.getPlan(), tileCentersApi)
+        inputModeController.enterNormal()
+      }
+      // Invalid tile → stay in CRATE_DROP, do nothing
+    }
     return
   }
 
@@ -207,6 +264,7 @@ globeScene.load().then(({ boundingSphere }) => {
   mainCamera.fitToGlobe(boundingSphere)
 
   pinPlacementPreview = new PinPlacementPreview(globeScene.scene, navApi)
+  crateDropPreview = new CrateDropPreview(globeScene.scene)
 
   const pointer = new GlobePointer(renderer.domElement, mainCamera.camera, tileCentersApi, boundingSphere)
   setupLogHoveredTile(pointer)
@@ -217,8 +275,27 @@ globeScene.load().then(({ boundingSphere }) => {
 
     if (!tile || mode.kind === 'NORMAL') {
       pinPlacementPreview?.hide()
+      crateDropPreview?.hide()
       return
     }
+
+    if (mode.kind === 'CRATE_DROP') {
+      pinPlacementPreview?.hide()
+      const plan = stateManager.getPlan()
+      const vehicleTileId = stateManager.getVehicleTileAtStep(mode.vehicleId, mode.stepIndex)
+      if (vehicleTileId === undefined) return
+      const isValid = tile.is_land &&
+        plan.steps[mode.stepIndex]?.tileOccupations[tile.tile_id] === undefined &&
+        navApi.getNeighbors(vehicleTileId, 'ALL').includes(tile.tile_id)
+      crateDropPreview?.update(
+        tile, vehicleTileId, isValid,
+        plan.vehicles[mode.vehicleId]?.hue ?? 0,
+        globeCenter, tileCentersApi,
+      )
+      return
+    }
+
+    crateDropPreview?.hide()
 
     const vehicle = stateManager.getPlan().vehicles[mode.vehicleId]
     if (!vehicle) return

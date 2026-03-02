@@ -24,6 +24,7 @@ interface LabelEntry {
   textEl: HTMLSpanElement
   worldPos: THREE.Vector3
   smoothRot: number
+  id?: string
 }
 
 /**
@@ -47,6 +48,7 @@ export class LabelRenderer {
   private container: HTMLDivElement
   private labels = new Map<number, LabelEntry>()
   private pinLabels = new Map<string, LabelEntry>()
+  private pinLabelOffsets = new Map<string, number>()
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -149,8 +151,9 @@ export class LabelRenderer {
       seen.add(item.id)
       if (!this.pinLabels.has(item.id)) {
         const { el, textEl } = this.createSmallBubble(item.label, item.vehicleId)
+        el.style.transition = 'transform 0.2s ease'
         this.container.appendChild(el)
-        this.pinLabels.set(item.id, { el, textEl, worldPos: item.worldPosition.clone(), smoothRot: 0, })
+        this.pinLabels.set(item.id, { el, textEl, worldPos: item.worldPosition.clone(), smoothRot: 0, id: item.id })
       } else {
         this.pinLabels.get(item.id)!.worldPos.copy(item.worldPosition)
       }
@@ -163,13 +166,20 @@ export class LabelRenderer {
     }
   }
 
+  /** Animate a pin label upward by offsetPx when a context menu is open (0 to reset). */
+  setPinLabelOffset(vehicleId: number, stepIndex: number, offsetPx: number): void {
+    const key = `${vehicleId}-${stepIndex}`
+    if (offsetPx === 0) this.pinLabelOffsets.delete(key)
+    else this.pinLabelOffsets.set(key, offsetPx)
+  }
+
   /** Call each frame with the elapsed time in seconds. */
   update(delta: number): void {
     for (const entry of this.labels.values()) {
       this.updateLabel(entry, delta)
     }
-    for (const entry of this.pinLabels.values()) {
-      this.updatePinLabel(entry)
+    for (const [id, entry] of this.pinLabels) {
+      this.updatePinLabel(entry, id)
     }
   }
 
@@ -301,7 +311,7 @@ export class LabelRenderer {
   }
 
   /** Position a pin label at its projected screen point, hidden when behind the horizon. */
-  private updatePinLabel(entry: LabelEntry): void {
+  private updatePinLabel(entry: LabelEntry, id: string): void {
     const blend = this.getHorizonBlend(entry.worldPos)
     entry.el.style.opacity = blend >= 1 ? '0' : String(1 - blend)
     if (blend >= 1) return
@@ -310,7 +320,10 @@ export class LabelRenderer {
     entry.el.style.left = `${screen.x}px`
     entry.el.style.top = `${screen.y}px`
     entry.el.style.transformOrigin = '50% 100%'
-    entry.el.style.transform = 'translateX(-50%) translateY(-100%)'
+    const offset = this.pinLabelOffsets.get(id) ?? 0
+    entry.el.style.transform = offset > 0
+      ? `translateX(-50%) translateY(calc(-100% - ${offset}px))`
+      : 'translateX(-50%) translateY(-100%)'
   }
 
   /** Project a world position to pixel coordinates. Rounded to suppress subpixel jitter. */

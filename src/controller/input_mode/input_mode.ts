@@ -5,6 +5,8 @@ export type InputMode =
       readonly prevTileId: number; readonly nextTileId: number | undefined }
   | { readonly kind: 'ROUTE_SPLIT'; readonly vehicleId: number; readonly insertAfterStepIndex: number;
       readonly fromTileId: number; readonly toTileId: number }
+  | { readonly kind: 'CRATE_DROP'; readonly vehicleId: number;
+      readonly stepIndex: number; readonly crateId: number }
 
 export type ModeChangeListener = (mode: InputMode) => void
 
@@ -28,6 +30,11 @@ export class InputModeController {
 
   enterRouteSplit(vehicleId: number, insertAfterStepIndex: number, fromTileId: number, toTileId: number): void {
     this.mode = { kind: 'ROUTE_SPLIT', vehicleId, insertAfterStepIndex, fromTileId, toTileId }
+    this.emit()
+  }
+
+  enterCrateDrop(vehicleId: number, stepIndex: number, crateId: number): void {
+    this.mode = { kind: 'CRATE_DROP', vehicleId, stepIndex, crateId }
     this.emit()
   }
 

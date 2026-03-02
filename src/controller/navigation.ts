@@ -18,6 +18,11 @@ export class NavApi {
     this.maps.set('LAND', buildAdjMap(JSON.parse(landNavRaw) as NavData))
   }
 
+  /** Returns the direct neighbours of tileId in the given nav mesh (empty if unknown). */
+  getNeighbors(tileId: number, navMesh: NavMesh): number[] {
+    return this.maps.get(navMesh)?.get(tileId) ?? []
+  }
+
   /** Returns the shortest path as an ordered list of tile IDs, or null if unreachable. */
   findPath(from: number, to: number, navMesh: NavMesh): number[] | null {
     const adj = this.maps.get(navMesh)
