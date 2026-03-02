@@ -20,6 +20,7 @@ export class PinPlacementPreview {
   private previewLine: THREE.Line | null = null
   private previewLine2: THREE.Line | null = null
   private gltfCache = new Map<string, GLTF>()
+  private updateGen = 0
 
   constructor(scene: THREE.Scene, navApi: NavApi) {
     this.scene = scene
@@ -43,12 +44,14 @@ export class PinPlacementPreview {
     toTileId?: number,
   ): Promise<void> {
     this.clearScene()
+    const gen = ++this.updateGen
 
     const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
     const outwardNormal = tilePos.clone().sub(globeCenter).normalize()
 
     // Ghost pin
     const gltf = await this.loadGltf(pinUrl)
+    if (this.updateGen !== gen) return  // superseded by a newer call or hide()
     const pin = gltf.scene.clone()
     pin.scale.setScalar(GHOST_PIN_SCALE)
     pin.quaternion.setFromUnitVectors(UP, outwardNormal)
@@ -84,8 +87,11 @@ export class PinPlacementPreview {
     }
   }
 
-  /** Remove ghost pin and preview route line from scene. */
-  hide(): void { this.clearScene() }
+  /** Remove ghost pin and preview route lines from scene, and cancel any in-flight update. */
+  hide(): void {
+    ++this.updateGen
+    this.clearScene()
+  }
 
   private clearScene(): void {
     if (this.ghostPin)    { this.scene.remove(this.ghostPin);    this.ghostPin    = null }
