@@ -70,7 +70,7 @@ export class GameItemRenderer {
     stepIndex = 0
   ): Promise<void> {
     const plan = stateManager.getPlan()
-    await this.renderTimestep(plan.steps[stepIndex], plan.crates, plan.vehicles, tileApi, globeCenter)
+    await this.renderTimestep(plan.steps[stepIndex], plan.crates, plan.vehicles, tileApi, globeCenter, stepIndex)
     await this.renderVehicleMovementPins(plan, tileApi, globeCenter)
     await this.renderCargoLoadingArrows(plan, tileApi, globeCenter)
     await this.renderCargoUnloadingEffects(plan, tileApi, globeCenter)
@@ -161,7 +161,8 @@ export class GameItemRenderer {
     crates: Record<number, Crate>,
     vehicles: Record<number, Vehicle>,
     tileApi: TileCentersApi,
-    globeCenter: THREE.Vector3
+    globeCenter: THREE.Vector3,
+    stepIndex: number,
   ): Promise<void> {
     for (const [tileIdStr, occupant] of Object.entries(timestep.tileOccupations)) {
       const tile = tileApi.getTileById(Number(tileIdStr))
@@ -180,7 +181,7 @@ export class GameItemRenderer {
         obj.scale.setScalar(CRATE_SCALE)
         obj.quaternion.setFromUnitVectors(UP, outwardNormal)
         obj.position.copy(tilePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)
-        const crateMeta = { entityType: 'CRATE', entityId: id }
+        const crateMeta = { entityType: 'CRATE', entityId: id, stepIndex, tileId: Number(tileIdStr) }
         obj.userData = crateMeta
         obj.traverse((child) => { child.userData = crateMeta })
 
@@ -420,13 +421,16 @@ export class GameItemRenderer {
         this.scene.add(arrow)
         this.objects.push(arrow)
 
-        // Ghost crate at the unloaded tile
+        // Ghost crate at the unloaded tile — pickable so the player can load it
         const crateOutwardNormal = cratePos.clone().sub(globeCenter).normalize()
         const ghost = (await this.loadGltf(crateUrl)).scene.clone()
         ghost.scale.setScalar(CRATE_SCALE)
         ghost.quaternion.setFromUnitVectors(UP, crateOutwardNormal)
         ghost.position.copy(cratePos).addScaledVector(crateOutwardNormal, CRATE_SURFACE_OFFSET)
+        const ghostMeta = { entityType: 'GHOST_CRATE', crateId, stepIndex: i, tileId: crateTileId }
+        ghost.userData = ghostMeta
         ghost.traverse((child) => {
+          child.userData = ghostMeta
           if (!(child instanceof THREE.Mesh)) return
           const applyOpacity = (mat: THREE.Material) => {
             const cloned = (mat as THREE.MeshStandardMaterial).clone()
@@ -442,6 +446,7 @@ export class GameItemRenderer {
         })
         this.scene.add(ghost)
         this.objects.push(ghost)
+        this.pickables.push(ghost)
       }
     }
   }

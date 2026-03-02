@@ -7,6 +7,8 @@ export type InputMode =
       readonly fromTileId: number; readonly toTileId: number }
   | { readonly kind: 'CRATE_DROP'; readonly vehicleId: number;
       readonly stepIndex: number; readonly crateId: number }
+  | { readonly kind: 'CRATE_LOAD'; readonly crateId: number;
+      readonly stepIndex: number; readonly crateTileId: number }
 
 export type ModeChangeListener = (mode: InputMode) => void
 
@@ -35,6 +37,11 @@ export class InputModeController {
 
   enterCrateDrop(vehicleId: number, stepIndex: number, crateId: number): void {
     this.mode = { kind: 'CRATE_DROP', vehicleId, stepIndex, crateId }
+    this.emit()
+  }
+
+  enterCrateLoad(crateId: number, stepIndex: number, crateTileId: number): void {
+    this.mode = { kind: 'CRATE_LOAD', crateId, stepIndex, crateTileId }
     this.emit()
   }
 

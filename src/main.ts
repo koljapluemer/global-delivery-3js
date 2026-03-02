@@ -14,8 +14,10 @@ import { InspectorPanel } from './view/ui/inspector_panel/inspector_panel'
 import { InputModeController } from './controller/input_mode/input_mode'
 import { PinPlacementPreview } from './view/game/pin_placement_preview'
 import { CrateDropPreview } from './view/game/crate_drop_preview'
+import { CrateLoadPreview } from './view/game/crate_load_preview'
 import { CancelButton } from './view/ui/overlay/cancel_button'
 import { PinContextMenu } from './view/ui/overlay/pin_context_menu'
+import { CrateLoadMenu } from './view/ui/overlay/crate_load_menu'
 import { hsvColor } from './view/game/color_utils'
 import type { TileCenter } from './controller/layer_0/tile_centers_api'
 import type { StepAction } from './model/types/StepAction'
@@ -47,8 +49,12 @@ cancelButton.mount(document.body, () => inputModeController.enterNormal())
 let labelRenderer: LabelRenderer | null = null
 let pinPlacementPreview: PinPlacementPreview | null = null
 let crateDropPreview: CrateDropPreview | null = null
+let crateLoadPreview: CrateLoadPreview | null = null
+let lastValidLoadTarget: { vehicleId: number } | null = null
 const pinContextMenu = new PinContextMenu()
 pinContextMenu.mount(document.body)
+const crateLoadMenu = new CrateLoadMenu()
+crateLoadMenu.mount(document.body)
 let lastHoveredTile: TileCenter | null = null
 let globeCenter = new THREE.Vector3()
 let mousedownPos: { x: number; y: number } | null = null
@@ -98,14 +104,18 @@ planPanel.onRemoveAction = handleRemoveAction
 // Sync UI / cursor when input mode changes
 // ---------------------------------------------------------------------------
 inputModeController.onChange((mode) => {
-  cancelButton[mode.kind === 'PIN_PLACEMENT' || mode.kind === 'CRATE_DROP' ? 'show' : 'hide']()
+  const needsCancel = mode.kind === 'PIN_PLACEMENT' || mode.kind === 'CRATE_DROP' || mode.kind === 'CRATE_LOAD'
+  cancelButton[needsCancel ? 'show' : 'hide']()
   renderer.domElement.style.cursor =
-    mode.kind === 'PIN_PLACEMENT' || mode.kind === 'CRATE_DROP' ? 'crosshair' :
+    mode.kind === 'PIN_PLACEMENT' || mode.kind === 'CRATE_DROP' || mode.kind === 'CRATE_LOAD' ? 'crosshair' :
     (mode.kind === 'PIN_DRAG' || mode.kind === 'ROUTE_SPLIT') ? 'grabbing' : ''
   if (mode.kind === 'NORMAL') {
     pinPlacementPreview?.hide()
     crateDropPreview?.hide()
+    crateLoadPreview?.hide()
     pinContextMenu.hide()
+    crateLoadMenu.hide()
+    lastValidLoadTarget = null
   }
   if (mode.kind !== 'NORMAL') gameItemRenderer.setHovered(null)
 })
@@ -214,6 +224,17 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
     return
   }
 
+  if (mode.kind === 'CRATE_LOAD') {
+    if (!dragged && lastValidLoadTarget) {
+      stateManager.addCrateLoad(mode.stepIndex, mode.crateId, lastValidLoadTarget.vehicleId)
+      crateLoadPreview?.hide()
+      await rerender()
+      inspectorPanel.show({ kind: 'VEHICLE', id: lastValidLoadTarget.vehicleId }, stateManager.getPlan(), tileCentersApi)
+      inputModeController.enterNormal()
+    }
+    return
+  }
+
   if (mode.kind === 'PIN_PLACEMENT') {
     if (!lastHoveredTile) return
     stateManager.addVehicleStep(mode.vehicleId, lastHoveredTile.tile_id)
@@ -230,15 +251,20 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
     raycaster.setFromCamera(ndcFromEvent(e, renderer.domElement), mainCamera.camera)
     const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
     if (!hits.length) { inspectorPanel.hide(); return }
-    const meta = hits[0].object.userData as { entityType?: string; entityId?: number }
-    if (meta.entityType === 'VEHICLE' || meta.entityType === 'CRATE') {
-      inspectorPanel.show(
-        meta.entityType === 'VEHICLE'
-          ? { kind: 'VEHICLE', id: meta.entityId! }
-          : { kind: 'CRATE',  id: meta.entityId! },
-        stateManager.getPlan(),
-        tileCentersApi,
-      )
+    const meta = hits[0].object.userData as { entityType?: string; entityId?: number; crateId?: number; stepIndex?: number; tileId?: number }
+    if (meta.entityType === 'VEHICLE') {
+      inspectorPanel.show({ kind: 'VEHICLE', id: meta.entityId! }, stateManager.getPlan(), tileCentersApi)
+    } else if (meta.entityType === 'CRATE' || meta.entityType === 'GHOST_CRATE') {
+      const crateId = meta.entityType === 'CRATE' ? meta.entityId! : meta.crateId!
+      const stepIndex = meta.stepIndex ?? 0
+      const crateTileId = meta.tileId!
+      crateLoadMenu.show(crateId, stateManager.getPlan(), e.clientX, e.clientY, {
+        onLoad: () => {
+          crateLoadMenu.hide()
+          inputModeController.enterCrateLoad(crateId, stepIndex, crateTileId)
+        },
+        onClose: () => {},
+      })
     } else {
       inspectorPanel.hide()
     }
@@ -249,10 +275,34 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
 // Hover highlight: raycast pickables on every mousemove (NORMAL mode only)
 // ---------------------------------------------------------------------------
 renderer.domElement.addEventListener('mousemove', (e) => {
-  if (inputModeController.getMode().kind !== 'NORMAL') return
+  const mode = inputModeController.getMode()
   const raycaster = new THREE.Raycaster()
   raycaster.setFromCamera(ndcFromEvent(e, renderer.domElement), mainCamera.camera)
   const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
+
+  if (mode.kind === 'CRATE_LOAD') {
+    const hitMeta = hits[0]?.object?.userData as { entityType?: string; entityId?: number; vehicleId?: number; stepIndex?: number } | undefined
+    let vehicleId: number | undefined
+    if (hitMeta?.entityType === 'VEHICLE') {
+      vehicleId = hitMeta.entityId
+    } else if (hitMeta?.entityType === 'PIN' && hitMeta.stepIndex === mode.stepIndex) {
+      vehicleId = hitMeta.vehicleId
+    }
+    const valid = vehicleId !== undefined &&
+      stateManager.getVehicleTileAtStep(vehicleId, mode.stepIndex) === mode.crateTileId
+    lastValidLoadTarget = valid ? { vehicleId: vehicleId! } : null
+    gameItemRenderer.setHovered(valid ? hits[0].object : null)
+    if (valid) {
+      const vehicleTileId = stateManager.getVehicleTileAtStep(vehicleId!, mode.stepIndex)!
+      const hue = stateManager.getPlan().vehicles[vehicleId!]?.hue ?? 0
+      crateLoadPreview?.update(mode.crateTileId, vehicleTileId, hue, globeCenter, tileCentersApi)
+    } else {
+      crateLoadPreview?.hide()
+    }
+    return
+  }
+
+  if (mode.kind !== 'NORMAL') return
   gameItemRenderer.setHovered(hits[0]?.object ?? null)
 })
 
@@ -265,6 +315,7 @@ globeScene.load().then(({ boundingSphere }) => {
 
   pinPlacementPreview = new PinPlacementPreview(globeScene.scene, navApi)
   crateDropPreview = new CrateDropPreview(globeScene.scene)
+  crateLoadPreview = new CrateLoadPreview(globeScene.scene)
 
   const pointer = new GlobePointer(renderer.domElement, mainCamera.camera, tileCentersApi, boundingSphere)
   setupLogHoveredTile(pointer)
@@ -276,6 +327,7 @@ globeScene.load().then(({ boundingSphere }) => {
     if (!tile || mode.kind === 'NORMAL') {
       pinPlacementPreview?.hide()
       crateDropPreview?.hide()
+      crateLoadPreview?.hide()
       return
     }
 
@@ -296,6 +348,9 @@ globeScene.load().then(({ boundingSphere }) => {
     }
 
     crateDropPreview?.hide()
+
+    // CRATE_LOAD uses object-based hover (handled in mousemove), not tile-based
+    if (mode.kind === 'CRATE_LOAD') return
 
     const vehicle = stateManager.getPlan().vehicles[mode.vehicleId]
     if (!vehicle) return

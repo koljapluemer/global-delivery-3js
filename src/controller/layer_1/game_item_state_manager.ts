@@ -84,6 +84,26 @@ export class GameItemStateManager {
   }
 
   /**
+   * Load crateId onto vehicleId at step[stepIndex], removing it from the ground.
+   * Propagates forward so subsequent steps reflect the crate being carried.
+   */
+  addCrateLoad(stepIndex: number, crateId: number, vehicleId: number): void {
+    if (stepIndex < 0 || stepIndex >= this.plan.steps.length) return
+    const curr = this.plan.steps[stepIndex]
+    const crateTile = this.findCrateTile(curr, crateId)
+    if (crateTile === undefined) return
+    const vehicleTile = this.findVehicleTile(curr, vehicleId)
+    if (vehicleTile !== crateTile) return  // vehicle must be co-located
+
+    const occ = { ...curr.tileOccupations }
+    delete occ[crateTile]
+    const cargo = { ...curr.transportedCargo, [crateId]: vehicleId }
+    this.plan.steps[stepIndex] = { tileOccupations: occ, transportedCargo: cargo }
+    this.propagateCrateToVehicle(stepIndex + 1, crateId, vehicleId)
+    this.pruneEmptySteps()
+  }
+
+  /**
    * Undo a single action within a step, then auto-prune any steps that became
    * identical to their predecessor (no change = no action = no step needed).
    */
