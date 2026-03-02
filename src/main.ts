@@ -27,7 +27,7 @@ const mainCamera = new MainCamera(renderer.domElement)
 const tileCentersApi = new TileCentersApi()
 const navApi = new NavApi()
 const stateManager = new GameItemStateManager(DEMO_PLAN)
-const gameItemRenderer = new GameItemRenderer(globeScene.scene, navApi)
+const gameItemRenderer = new GameItemRenderer(globeScene.scene, navApi, renderer)
 const inputModeController = new InputModeController()
 const cancelButton = new CancelButton()
 
@@ -46,6 +46,16 @@ let labelRenderer: LabelRenderer | null = null
 let pinPlacementPreview: PinPlacementPreview | null = null
 let lastHoveredTile: TileCenter | null = null
 let globeCenter = new THREE.Vector3()
+let mousedownPos: { x: number; y: number } | null = null
+const DRAG_PX = 5
+
+function ndcFromEvent(e: MouseEvent, canvas: HTMLCanvasElement): THREE.Vector2 {
+  const rect = canvas.getBoundingClientRect()
+  return new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Shared re-render: dispose old 3D objects, re-render from current plan state.
@@ -83,41 +93,64 @@ planPanel.onRemoveAction = handleRemoveAction
 // Sync UI / cursor when input mode changes
 // ---------------------------------------------------------------------------
 inputModeController.onChange((mode) => {
-  if (mode.kind === 'PIN_PLACEMENT') {
-    cancelButton.show()
-    renderer.domElement.style.cursor = 'crosshair'
-  } else {
-    cancelButton.hide()
-    renderer.domElement.style.cursor = ''
-    pinPlacementPreview?.hide()
-  }
+  cancelButton[mode.kind === 'PIN_PLACEMENT' ? 'show' : 'hide']()
+  renderer.domElement.style.cursor =
+    mode.kind === 'PIN_PLACEMENT' ? 'crosshair' :
+    (mode.kind === 'PIN_DRAG' || mode.kind === 'ROUTE_SPLIT') ? 'grabbing' : ''
+  if (mode.kind === 'NORMAL') pinPlacementPreview?.hide()
 })
 
 // ---------------------------------------------------------------------------
-// Mode-aware canvas click handler
+// Drag detection: mousedown starts a potential drag; mouseup confirms or clicks
 // ---------------------------------------------------------------------------
-renderer.domElement.addEventListener('click', async (e) => {
-  const mode = inputModeController.getMode()
+renderer.domElement.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return
+  mousedownPos = { x: e.clientX, y: e.clientY }
+  if (inputModeController.getMode().kind !== 'NORMAL') return
 
-  if (mode.kind === 'NORMAL') {
-    const rect = renderer.domElement.getBoundingClientRect()
-    const ndc = new THREE.Vector2(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1,
-    )
-    const raycaster = new THREE.Raycaster()
-    raycaster.setFromCamera(ndc, mainCamera.camera)
-    const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
-    if (hits.length === 0) { inspectorPanel.hide(); return }
-    const meta = hits[0].object.userData as { entityType?: string; entityId?: number }
-    if (!meta.entityType || meta.entityId === undefined) { inspectorPanel.hide(); return }
-    inspectorPanel.show(
-      meta.entityType === 'VEHICLE'
-        ? { kind: 'VEHICLE', id: meta.entityId }
-        : { kind: 'CRATE', id: meta.entityId },
-      stateManager.getPlan(),
-      tileCentersApi,
-    )
+  // Raycast to check if the user started a drag on a PIN or ROUTE_LINE
+  const raycaster = new THREE.Raycaster()
+  raycaster.setFromCamera(ndcFromEvent(e, renderer.domElement), mainCamera.camera)
+  const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
+  if (!hits.length) return
+  const meta = hits[0].object.userData
+
+  if (meta.entityType === 'PIN') {
+    const prevTileId = stateManager.getVehicleTileAtStep(meta.vehicleId, meta.stepIndex - 1)
+    if (prevTileId === undefined) return
+    const nextTileId = stateManager.getVehicleTileAtStep(meta.vehicleId, meta.stepIndex + 1)
+    inputModeController.enterPinDrag(meta.vehicleId, meta.stepIndex, prevTileId, nextTileId)
+  } else if (meta.entityType === 'ROUTE_LINE') {
+    inputModeController.enterRouteSplit(
+      meta.vehicleId, meta.insertAfterStepIndex, meta.fromTileId, meta.toTileId)
+  }
+})
+
+renderer.domElement.addEventListener('mouseup', async (e) => {
+  if (e.button !== 0) return
+  const mode = inputModeController.getMode()
+  const dragged = mousedownPos !== null && (
+    Math.abs(e.clientX - mousedownPos.x) > DRAG_PX ||
+    Math.abs(e.clientY - mousedownPos.y) > DRAG_PX)
+  mousedownPos = null
+
+  if (mode.kind === 'PIN_DRAG') {
+    if (dragged && lastHoveredTile) {
+      stateManager.moveVehicleStep(mode.vehicleId, mode.stepIndex, lastHoveredTile.tile_id)
+    }
+    pinPlacementPreview?.hide()
+    await rerender()
+    inputModeController.enterNormal()
+    return
+  }
+
+  if (mode.kind === 'ROUTE_SPLIT') {
+    if (dragged && lastHoveredTile) {
+      stateManager.insertVehicleStep(mode.vehicleId, mode.insertAfterStepIndex, lastHoveredTile.tile_id)
+    }
+    pinPlacementPreview?.hide()
+    await rerender()
+    inputModeController.enterNormal()
     return
   }
 
@@ -128,6 +161,27 @@ renderer.domElement.addEventListener('click', async (e) => {
     await rerender()
     inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, stateManager.getPlan(), tileCentersApi)
     inputModeController.enterNormal()
+    return
+  }
+
+  // NORMAL mode + no meaningful drag → treat as selection click
+  if (!dragged) {
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(ndcFromEvent(e, renderer.domElement), mainCamera.camera)
+    const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
+    if (!hits.length) { inspectorPanel.hide(); return }
+    const meta = hits[0].object.userData as { entityType?: string; entityId?: number }
+    if (meta.entityType === 'VEHICLE' || meta.entityType === 'CRATE') {
+      inspectorPanel.show(
+        meta.entityType === 'VEHICLE'
+          ? { kind: 'VEHICLE', id: meta.entityId! }
+          : { kind: 'CRATE',  id: meta.entityId! },
+        stateManager.getPlan(),
+        tileCentersApi,
+      )
+    } else {
+      inspectorPanel.hide()
+    }
   }
 })
 
@@ -146,20 +200,34 @@ globeScene.load().then(({ boundingSphere }) => {
   pointer.onHover = (tile) => {
     lastHoveredTile = tile
     const mode = inputModeController.getMode()
-    if (mode.kind !== 'PIN_PLACEMENT' || !tile) {
+
+    if (!tile || mode.kind === 'NORMAL') {
       pinPlacementPreview?.hide()
       return
     }
+
     const vehicle = stateManager.getPlan().vehicles[mode.vehicleId]
     if (!vehicle) return
+
+    const fromTileId =
+      mode.kind === 'PIN_PLACEMENT' ? mode.fromTileId :
+      mode.kind === 'PIN_DRAG'      ? mode.prevTileId :
+                                      mode.fromTileId   // ROUTE_SPLIT
+
+    const toTileId: number | undefined =
+      mode.kind === 'PIN_DRAG'    ? mode.nextTileId :
+      mode.kind === 'ROUTE_SPLIT' ? mode.toTileId   :
+                                    undefined
+
     pinPlacementPreview?.update(
       tile,
-      mode.fromTileId,
+      fromTileId,
       vehicle.vehicleType.navMesh,
       vehicle.vehicleType.offsetAlongNormal,
       hsvColor(vehicle.hue),
       globeCenter,
       tileCentersApi,
+      toTileId,
     )
   }
 

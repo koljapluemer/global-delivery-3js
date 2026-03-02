@@ -18,6 +18,7 @@ export class PinPlacementPreview {
   private readonly navApi: NavApi
   private ghostPin: THREE.Object3D | null = null
   private previewLine: THREE.Line | null = null
+  private previewLine2: THREE.Line | null = null
   private gltfCache = new Map<string, GLTF>()
 
   constructor(scene: THREE.Scene, navApi: NavApi) {
@@ -26,8 +27,10 @@ export class PinPlacementPreview {
   }
 
   /**
-   * Update the ghost pin and preview route line to reflect hovering over `tile`.
-   * The ghost pin is rendered at `tile`; the route line runs from `fromTileId` to `tile`.
+   * Update the ghost pin and preview route line(s) to reflect hovering over `tile`.
+   * The ghost pin is at `tile`; the first preview line runs from `fromTileId` to `tile`.
+   * If `toTileId` is provided, a second preview line runs from `tile` to `toTileId`
+   * (used for PIN_DRAG and ROUTE_SPLIT modes where the ghost sits between two endpoints).
    */
   async update(
     tile: TileCenter,
@@ -37,6 +40,7 @@ export class PinPlacementPreview {
     color: THREE.Color,
     globeCenter: THREE.Vector3,
     tileApi: TileCentersApi,
+    toTileId?: number,
   ): Promise<void> {
     this.clearScene()
 
@@ -65,10 +69,18 @@ export class PinPlacementPreview {
     this.scene.add(pin)
     this.ghostPin = pin
 
-    // Preview route line
+    // Preview route line: fromTileId → tile
     const path = this.navApi.findPath(fromTileId, tile.tile_id, navMesh)
     if (path && path.length > 1) {
       this.previewLine = this.drawPreviewLine(path, tileApi, globeCenter, surfaceOffset, color)
+    }
+
+    // Optional second segment: tile → toTileId (for drag/split preview)
+    if (toTileId !== undefined) {
+      const path2 = this.navApi.findPath(tile.tile_id, toTileId, navMesh)
+      if (path2 && path2.length > 1) {
+        this.previewLine2 = this.drawPreviewLine(path2, tileApi, globeCenter, surfaceOffset, color)
+      }
     }
   }
 
@@ -76,8 +88,9 @@ export class PinPlacementPreview {
   hide(): void { this.clearScene() }
 
   private clearScene(): void {
-    if (this.ghostPin) { this.scene.remove(this.ghostPin); this.ghostPin = null }
-    if (this.previewLine) { this.scene.remove(this.previewLine); this.previewLine = null }
+    if (this.ghostPin)    { this.scene.remove(this.ghostPin);    this.ghostPin    = null }
+    if (this.previewLine)  { this.scene.remove(this.previewLine);  this.previewLine  = null }
+    if (this.previewLine2) { this.scene.remove(this.previewLine2); this.previewLine2 = null }
   }
 
   private drawPreviewLine(

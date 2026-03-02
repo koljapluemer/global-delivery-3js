@@ -19,6 +19,39 @@ export class GameItemStateManager {
     return this.findVehicleTile(lastStep, vehicleId) ?? null
   }
 
+  /** Returns vehicleId's tile in plan.steps[stepIndex], or undefined if not found. */
+  getVehicleTileAtStep(vehicleId: number, stepIndex: number): number | undefined {
+    const step = this.plan.steps[stepIndex]
+    if (!step) return undefined
+    return this.findVehicleTile(step, vehicleId)
+  }
+
+  /**
+   * Move vehicleId's destination in step[stepIndex] to newTileId.
+   * Cascades any cargo loads/unloads that depended on the old position, then prunes.
+   */
+  moveVehicleStep(vehicleId: number, stepIndex: number, newTileId: number): void {
+    if (stepIndex < 1 || stepIndex >= this.plan.steps.length) return
+    this.applyVehicleMove(stepIndex, vehicleId, newTileId)
+    this.pruneEmptySteps()
+  }
+
+  /**
+   * Insert a new step after afterStepIndex with vehicleId at newTileId.
+   * Copies all other occupants and cargo from the base step. No cascade needed.
+   */
+  insertVehicleStep(vehicleId: number, afterStepIndex: number, newTileId: number): void {
+    if (afterStepIndex < 0 || afterStepIndex >= this.plan.steps.length) return
+    const base = this.plan.steps[afterStepIndex]
+    const occ = { ...base.tileOccupations }
+    for (const [k, [kind, id]] of Object.entries(occ)) {
+      if (kind === 'VEHICLE' && id === vehicleId) { delete occ[Number(k)]; break }
+    }
+    occ[newTileId] = ['VEHICLE', vehicleId]
+    this.plan.steps.splice(afterStepIndex + 1, 0,
+      { tileOccupations: occ, transportedCargo: { ...base.transportedCargo } })
+  }
+
   /** Appends a new Timestep moving vehicleId to toTileId, copying all other occupants and cargo. */
   addVehicleStep(vehicleId: number, toTileId: number): void {
     const lastStep = this.plan.steps[this.plan.steps.length - 1]
@@ -49,44 +82,45 @@ export class GameItemStateManager {
   // Private — per-action undo logic
   // ---------------------------------------------------------------------------
 
-  /**
-   * Revert vehicleId back to its step[i-1] tile in step[i], then cascade-undo
-   * any cargo loads/unloads that depended on the vehicle being at the moved-to
-   * location.
-   *
-   * Order:
-   *   1. Fix vehicle position in step[i] FIRST — so that forward propagation
-   *      inside undoCrateLoad/undoCrateUnload sees the corrected vehicle tile
-   *      when testing for independent re-loads.
-   *   2. Cascade cargo ops, detected from the original (pre-fix) step[i].
-   */
+  /** Revert vehicleId to its step[i-1] tile. Used by removeAction internally. */
   private undoVehicleMove(i: number, vehicleId: number): void {
-    const prev = this.plan.steps[i - 1]
-    const orig = this.plan.steps[i]   // snapshot for cargo-dependency detection only
-
-    // 1. Fix vehicle position in step[i].
-    const prevTile = this.findVehicleTile(prev, vehicleId)
+    const prevTile = this.findVehicleTile(this.plan.steps[i - 1], vehicleId)
     if (prevTile === undefined) return
-    const occ = { ...orig.tileOccupations }
-    for (const [tileIdStr, [kind, id]] of Object.entries(occ)) {
-      if (kind === 'VEHICLE' && id === vehicleId) { delete occ[Number(tileIdStr)]; break }
-    }
-    occ[prevTile] = ['VEHICLE', vehicleId]
-    this.plan.steps[i] = { ...orig, tileOccupations: occ }
+    this.applyVehicleMove(i, vehicleId, prevTile)
+  }
 
-    // 2. Cascade: crates loaded onto this vehicle at step i (detected from orig).
+  /**
+   * Core vehicle-move mutation: set vehicleId's tile in step[stepIndex] to newTileId,
+   * then cascade-undo cargo loads/unloads that depended on the old position.
+   *
+   * Steps vehicle position FIRST (so forward propagation inside undoCrateLoad/
+   * undoCrateUnload sees the corrected tile when testing for independent re-loads).
+   * Cargo cascade is skipped when position didn't actually change.
+   */
+  private applyVehicleMove(stepIndex: number, vehicleId: number, newTileId: number): void {
+    const orig = this.plan.steps[stepIndex]   // snapshot for cargo-dependency detection
+    const prev = this.plan.steps[stepIndex - 1]
+
+    // 1. Set vehicle to newTileId.
+    const currentTile = this.findVehicleTile(orig, vehicleId)
+    const occ = { ...orig.tileOccupations }
+    if (currentTile !== undefined) delete occ[currentTile]
+    occ[newTileId] = ['VEHICLE', vehicleId]
+    this.plan.steps[stepIndex] = { ...orig, tileOccupations: occ }
+
+    // 2. Cascade cargo only when the position actually changed.
+    if (newTileId === currentTile) return
+
     for (const [crateIdStr, vId] of Object.entries(orig.transportedCargo)) {
       const crateId = Number(crateIdStr)
       if (vId === vehicleId && !(crateId in prev.transportedCargo)) {
-        this.undoCrateLoad(i, crateId)
+        this.undoCrateLoad(stepIndex, crateId)
       }
     }
-
-    // 3. Cascade: crates unloaded from this vehicle at step i (detected from orig).
     for (const [crateIdStr, vId] of Object.entries(prev.transportedCargo)) {
       const crateId = Number(crateIdStr)
       if (vId === vehicleId && !(crateId in orig.transportedCargo)) {
-        this.undoCrateUnload(i, crateId)
+        this.undoCrateUnload(stepIndex, crateId)
       }
     }
   }

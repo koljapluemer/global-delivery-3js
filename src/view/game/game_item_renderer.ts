@@ -1,5 +1,8 @@
 import * as THREE from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import type { GameItemStateManager } from '../../controller/layer_1/game_item_state_manager'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { NavApi } from '../../controller/navigation'
@@ -25,6 +28,8 @@ const PIN_SURFACE_OFFSET = -0.02
 
 /** How far to push route path lines above the surface, in world units. */
 const PATH_LINE_SURFACE_OFFSET = 0.0
+/** Route line thickness in screen pixels. */
+const ROUTE_LINE_WIDTH = 3
 
 /** Uniform scale applied to each cargo-loading arrow. */
 const CARGO_ARROW_SCALE = 0.035
@@ -45,13 +50,15 @@ const VEHICLE_MESH_URLS: Record<string, string> = {
 export class GameItemRenderer {
   private readonly scene: THREE.Scene
   private readonly navApi: NavApi
+  private readonly renderer: THREE.WebGLRenderer
   private objects: THREE.Object3D[] = []
   private pickables: THREE.Object3D[] = []
   private gltfCache = new Map<string, GLTF>()
 
-  constructor(scene: THREE.Scene, navApi: NavApi) {
+  constructor(scene: THREE.Scene, navApi: NavApi, renderer: THREE.WebGLRenderer) {
     this.scene = scene
     this.navApi = navApi
+    this.renderer = renderer
   }
 
   async render(
@@ -70,6 +77,11 @@ export class GameItemRenderer {
   dispose(): void {
     for (const obj of this.objects) {
       this.scene.remove(obj)
+      // Dispose geometry/material for Line2 and similar GPU-owned resources
+      const o = obj as THREE.Object3D & { geometry?: { dispose(): void }; material?: { dispose(): void } | Array<{ dispose(): void }> }
+      o.geometry?.dispose()
+      if (Array.isArray(o.material)) { for (const m of o.material) m.dispose() }
+      else o.material?.dispose()
     }
     this.objects = []
     this.pickables = []
@@ -184,20 +196,27 @@ export class GameItemRenderer {
         const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
         const outwardNormal = tilePos.clone().sub(globeCenter).normalize()
 
-        // Pin at destination
+        // Pin at destination — pickable so users can drag it
         const pin = (await this.loadGltf(pinUrl)).scene.clone()
         pin.scale.setScalar(PIN_SCALE)
         pin.quaternion.setFromUnitVectors(UP, outwardNormal)
         pin.position.copy(tilePos).addScaledVector(outwardNormal, PIN_SURFACE_OFFSET)
         applyPrimaryColor(pin, color)
+        const pinMeta = { entityType: 'PIN', vehicleId: id, stepIndex: i }
+        pin.userData = pinMeta
+        pin.traverse((child) => { child.userData = pinMeta })
         this.scene.add(pin)
         this.objects.push(pin)
+        this.pickables.push(pin)
 
-        // Route line from previous tile to this tile
+        // Route line from previous tile to this tile — pickable for drag-to-split
         if (prevTileId !== undefined) {
           const path = this.navApi.findPath(prevTileId, tileId, vehicleType.navMesh)
           if (path && path.length > 1) {
-            this.drawRouteLine(path, tileApi, globeCenter, vehicleType.offsetAlongNormal, color)
+            this.drawRouteLine(
+              path, tileApi, globeCenter, vehicleType.offsetAlongNormal, color,
+              { vehicleId: id, insertAfterStepIndex: i - 1, fromTileId: prevTileId, toTileId: tileId },
+            )
           }
         }
       }
@@ -372,23 +391,31 @@ export class GameItemRenderer {
     globeCenter: THREE.Vector3,
     vehicleSurfaceOffset: number,
     color: THREE.Color,
+    lineMeta: { vehicleId: number; insertAfterStepIndex: number; fromTileId: number; toTileId: number },
   ): void {
     const surfaceOffset = vehicleSurfaceOffset + PATH_LINE_SURFACE_OFFSET
-    const points: THREE.Vector3[] = []
+    const positions: number[] = []
     for (const tileId of pathTileIds) {
       const tile = tileApi.getTileById(tileId)
       if (!tile) continue
       const pos = new THREE.Vector3(tile.x, tile.z, -tile.y)
       const normal = pos.clone().sub(globeCenter).normalize()
-      points.push(pos.clone().addScaledVector(normal, surfaceOffset))
+      const p = pos.clone().addScaledVector(normal, surfaceOffset)
+      positions.push(p.x, p.y, p.z)
     }
-    if (points.length < 2) return
+    if (positions.length < 6) return  // need at least 2 points (6 floats)
 
-    const geometry = new THREE.BufferGeometry().setFromPoints(points)
-    const material = new THREE.LineBasicMaterial({ color })
-    const line = new THREE.Line(geometry, material)
+    const geometry = new LineGeometry()
+    geometry.setPositions(positions)
+    const resolution = this.renderer.getSize(new THREE.Vector2())
+    const material = new LineMaterial({ color, linewidth: ROUTE_LINE_WIDTH, resolution })
+    const line = new Line2(geometry, material)
+    line.computeLineDistances()
+    const meta = { entityType: 'ROUTE_LINE', ...lineMeta }
+    line.userData = meta
     this.scene.add(line)
     this.objects.push(line)
+    this.pickables.push(line)
   }
 
   private loadGltf(url: string): Promise<GLTF> {
