@@ -1,6 +1,10 @@
+import type { StepAction } from '../../../model/types/StepAction'
+
 export interface StepEntry {
   readonly stepLabel: string
   readonly description: string
+  readonly stepIndex: number
+  readonly action: StepAction
 }
 
 export interface VehicleInspection {

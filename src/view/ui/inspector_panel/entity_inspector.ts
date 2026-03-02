@@ -2,6 +2,7 @@ import type { Plan } from '../../../model/types/Plan'
 import type { EntityTarget } from '../../../model/types/EntityTarget'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
 import type { CrateInspection, InspectionContent, StepEntry, VehicleInspection } from './types'
+import type { StepAction } from '../../../model/types/StepAction'
 
 function resolveCountry(tileId: number, tileApi: TileCentersApi): string | null {
   return tileApi.getTileById(tileId)?.country_name ?? null
@@ -39,7 +40,8 @@ function inspectVehicle(id: number, plan: Plan, tileApi: TileCentersApi): Vehicl
     }
     if (currTile !== undefined && prevTile !== currTile) {
       const country = resolveCountry(currTile, tileApi) ?? 'open sea'
-      stepEntries.push({ stepLabel: label, description: `Arrives in ${country}` })
+      const action: StepAction = { kind: 'VEHICLE_MOVED', vehicleId: id }
+      stepEntries.push({ stepLabel: label, description: `Arrives in ${country}`, stepIndex: i, action })
     }
 
     // Crates loaded onto this vehicle
@@ -48,7 +50,8 @@ function inspectVehicle(id: number, plan: Plan, tileApi: TileCentersApi): Vehicl
       const crateId = Number(crateIdStr)
       if (crateId in prev.transportedCargo) continue
       const dest = plan.crates[crateId].destinationCountry
-      stepEntries.push({ stepLabel: label, description: `Loads Crate → ${dest}` })
+      const action: StepAction = { kind: 'CRATE_LOADED', crateId }
+      stepEntries.push({ stepLabel: label, description: `Loads Crate → ${dest}`, stepIndex: i, action })
     }
 
     // Crates unloaded from this vehicle
@@ -62,7 +65,8 @@ function inspectVehicle(id: number, plan: Plan, tileApi: TileCentersApi): Vehicl
         if (kind === 'CRATE' && entityId === crateId) { unloadTile = Number(tileIdStr); break }
       }
       const country = unloadTile !== undefined ? resolveCountry(unloadTile, tileApi) ?? 'open sea' : 'open sea'
-      stepEntries.push({ stepLabel: label, description: `Unloads Crate → ${dest} in ${country}` })
+      const action: StepAction = { kind: 'CRATE_UNLOADED', crateId }
+      stepEntries.push({ stepLabel: label, description: `Unloads Crate → ${dest} in ${country}`, stepIndex: i, action })
     }
   }
 
@@ -101,7 +105,8 @@ function inspectCrate(id: number, plan: Plan, tileApi: TileCentersApi): CrateIns
     if (id in curr.transportedCargo && !(id in prev.transportedCargo)) {
       const vehicleId = curr.transportedCargo[id]
       const vehicleName = plan.vehicles[vehicleId].name
-      stepEntries.push({ stepLabel: label, description: `Loaded onto ${vehicleName}` })
+      const action: StepAction = { kind: 'CRATE_LOADED', crateId: id }
+      stepEntries.push({ stepLabel: label, description: `Loaded onto ${vehicleName}`, stepIndex: i, action })
     }
 
     // Unloaded
@@ -113,7 +118,8 @@ function inspectCrate(id: number, plan: Plan, tileApi: TileCentersApi): CrateIns
         if (kind === 'CRATE' && entityId === id) { unloadTile = Number(tileIdStr); break }
       }
       const country = unloadTile !== undefined ? resolveCountry(unloadTile, tileApi) ?? 'open sea' : 'open sea'
-      stepEntries.push({ stepLabel: label, description: `Unloaded in ${country} by ${vehicleName}` })
+      const action: StepAction = { kind: 'CRATE_UNLOADED', crateId: id }
+      stepEntries.push({ stepLabel: label, description: `Unloaded in ${country} by ${vehicleName}`, stepIndex: i, action })
     }
   }
 

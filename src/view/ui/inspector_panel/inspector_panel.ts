@@ -1,15 +1,20 @@
+import { createElement, Trash2 } from 'lucide'
 import type { Plan } from '../../../model/types/Plan'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
 import type { EntityTarget } from '../../../model/types/EntityTarget'
 import type { InspectionContent, StepEntry } from './types'
+import type { StepAction } from '../../../model/types/StepAction'
 import { inspectEntity } from './entity_inspector'
 
 export class InspectorPanel {
   /** Called when the user clicks "Add Pin to Route" for a vehicle. */
   onAddPin: ((vehicleId: number) => void) | null = null
+  /** Called when the user removes an individual action from a step. */
+  onRemoveAction: ((stepIndex: number, action: StepAction) => void) | null = null
 
   private aside: HTMLElement | null = null
   private body: HTMLElement | null = null
+  private currentTarget: EntityTarget | null = null
 
   mount(container: HTMLElement): void {
     const aside = document.createElement('aside')
@@ -42,14 +47,21 @@ export class InspectorPanel {
 
   show(target: EntityTarget, plan: Plan, tileApi: TileCentersApi): void {
     if (!this.aside || !this.body) return
+    this.currentTarget = target
     const content = inspectEntity(target, plan, tileApi)
     this.body.innerHTML = ''
     this.renderContent(content, target, this.body)
     this.aside.style.display = 'block'
   }
 
+  /** Re-render the panel for the currently-shown entity, if one is visible. */
+  refresh(plan: Plan, tileApi: TileCentersApi): void {
+    if (this.currentTarget) this.show(this.currentTarget, plan, tileApi)
+  }
+
   hide(): void {
     if (this.aside) this.aside.style.display = 'none'
+    this.currentTarget = null
   }
 
   private renderContent(content: InspectionContent, target: EntityTarget, container: HTMLElement): void {
@@ -97,14 +109,43 @@ export class InspectorPanel {
 
   private buildStepList(entries: readonly StepEntry[]): HTMLElement {
     const ul = document.createElement('ul')
+    Object.assign(ul.style, { listStyle: 'none', padding: '0', margin: '0' })
+
     for (const entry of entries) {
       const li = document.createElement('li')
+      Object.assign(li.style, {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '0.5rem',
+        padding: '0.2rem 0',
+      })
+
+      const text = document.createElement('span')
       const b = document.createElement('b')
       b.textContent = entry.stepLabel + ' '
-      li.appendChild(b)
-      li.appendChild(document.createTextNode(entry.description))
+      text.appendChild(b)
+      text.appendChild(document.createTextNode(entry.description))
+
+      const removeBtn = document.createElement('button')
+      removeBtn.title = 'Remove step'
+      Object.assign(removeBtn.style, {
+        flex: '0 0 auto',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '2px',
+        color: '#ff6b6b',
+        lineHeight: '0',
+      })
+      removeBtn.appendChild(createElement(Trash2, { width: 13, height: 13 }))
+      removeBtn.addEventListener('click', () => { this.onRemoveAction?.(entry.stepIndex, entry.action) })
+
+      li.appendChild(text)
+      li.appendChild(removeBtn)
       ul.appendChild(li)
     }
+
     return ul
   }
 }

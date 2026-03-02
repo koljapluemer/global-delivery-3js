@@ -1,9 +1,14 @@
+import { createElement, Trash2 } from 'lucide'
 import type { Plan } from '../../../model/types/Plan'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
+import type { StepAction } from '../../../model/types/StepAction'
 import type { PlanEvent, StepSummary } from './types'
 import { derivePlanSummary } from './plan_event_deriver'
 
 export class PlanPanel {
+  /** Called when the user removes an individual action from a step. */
+  onRemoveAction: ((stepIndex: number, action: StepAction) => void) | null = null
+
   private readonly plan: Plan
   private readonly tileApi: TileCentersApi
   private aside: HTMLElement | null = null
@@ -45,6 +50,7 @@ export class PlanPanel {
 
   private buildStepSection(summary: StepSummary): HTMLElement {
     const section = document.createElement('section')
+    Object.assign(section.style, { marginBottom: '0.75rem' })
 
     const heading = document.createElement('h2')
     heading.textContent = summary.label
@@ -52,15 +58,48 @@ export class PlanPanel {
 
     if (summary.events.length > 0) {
       const ul = document.createElement('ul')
+      Object.assign(ul.style, { listStyle: 'none', margin: '0.25rem 0 0', padding: '0' })
       for (const event of summary.events) {
-        const li = document.createElement('li')
-        li.textContent = this.eventToText(event)
-        ul.appendChild(li)
+        ul.appendChild(this.buildEventRow(event))
       }
       section.appendChild(ul)
     }
 
     return section
+  }
+
+  private buildEventRow(event: PlanEvent): HTMLElement {
+    const li = document.createElement('li')
+    Object.assign(li.style, {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '0.4rem',
+      padding: '0.15rem 0',
+    })
+
+    const text = document.createElement('span')
+    text.textContent = this.eventToText(event)
+
+    const removeBtn = document.createElement('button')
+    removeBtn.title = 'Remove action'
+    Object.assign(removeBtn.style, {
+      flex: '0 0 auto',
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      padding: '2px',
+      color: '#ff6b6b',
+      lineHeight: '0',
+    })
+    removeBtn.appendChild(createElement(Trash2, { width: 13, height: 13 }))
+    removeBtn.addEventListener('click', () => {
+      this.onRemoveAction?.(event.stepIndex, this.eventToAction(event))
+    })
+
+    li.appendChild(text)
+    li.appendChild(removeBtn)
+    return li
   }
 
   private eventToText(event: PlanEvent): string {
@@ -72,6 +111,14 @@ export class PlanPanel {
         return `Crate → ${event.crateDestination} loaded onto ${event.vehicleName}`
       case 'CRATE_UNLOADED':
         return `${event.vehicleName} unloads Crate → ${event.crateDestination} in ${loc(event.inCountry)}`
+    }
+  }
+
+  private eventToAction(event: PlanEvent): StepAction {
+    switch (event.kind) {
+      case 'VEHICLE_MOVED': return { kind: 'VEHICLE_MOVED', vehicleId: event.vehicleId }
+      case 'CRATE_LOADED':  return { kind: 'CRATE_LOADED',  crateId: event.crateId }
+      case 'CRATE_UNLOADED': return { kind: 'CRATE_UNLOADED', crateId: event.crateId }
     }
   }
 }

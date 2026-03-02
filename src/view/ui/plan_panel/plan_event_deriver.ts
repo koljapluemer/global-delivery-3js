@@ -30,6 +30,7 @@ function deriveTransitionEvents(
   vehicles: Record<number, Vehicle>,
   crates: Record<number, Crate>,
   tileApi: TileCentersApi,
+  i: number,
 ): PlanEvent[] {
   const prevMaps = buildTileMaps(prev)
   const currMaps = buildTileMaps(curr)
@@ -42,6 +43,8 @@ function deriveTransitionEvents(
       kind: 'VEHICLE_MOVED',
       vehicleName: vehicles[vehicleId].name,
       toCountry: resolveCountry(currTile, tileApi),
+      vehicleId,
+      stepIndex: i,
     })
   }
 
@@ -53,6 +56,8 @@ function deriveTransitionEvents(
       kind: 'CRATE_LOADED',
       crateDestination: crates[crateId].destinationCountry,
       vehicleName: vehicles[vehicleId].name,
+      crateId,
+      stepIndex: i,
     })
   }
 
@@ -66,6 +71,8 @@ function deriveTransitionEvents(
       crateDestination: crates[crateId].destinationCountry,
       vehicleName: vehicles[vehicleId].name,
       inCountry: crateTile !== undefined ? resolveCountry(crateTile, tileApi) : null,
+      crateId,
+      stepIndex: i,
     })
   }
 
@@ -87,6 +94,7 @@ export function derivePlanSummary(plan: Plan, tileApi: TileCentersApi): StepSumm
         plan.vehicles,
         plan.crates,
         tileApi,
+        i,
       ),
     })
   }

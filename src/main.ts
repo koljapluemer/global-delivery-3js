@@ -16,6 +16,7 @@ import { PinPlacementPreview } from './view/game/pin_placement_preview'
 import { CancelButton } from './view/ui/overlay/cancel_button'
 import { hsvColor } from './view/game/color_utils'
 import type { TileCenter } from './controller/layer_0/tile_centers_api'
+import type { StepAction } from './model/types/StepAction'
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
@@ -41,14 +42,46 @@ inspectorPanel.mount(document.body)
 
 cancelButton.mount(document.body, () => inputModeController.enterNormal())
 
-// Wire inspector "Add Pin" button to enter PIN_PLACEMENT mode
+let labelRenderer: LabelRenderer | null = null
+let pinPlacementPreview: PinPlacementPreview | null = null
+let lastHoveredTile: TileCenter | null = null
+let globeCenter = new THREE.Vector3()
+
+// ---------------------------------------------------------------------------
+// Shared re-render: dispose old 3D objects, re-render from current plan state.
+// ---------------------------------------------------------------------------
+async function rerender(): Promise<void> {
+  const plan = stateManager.getPlan()
+  gameItemRenderer.dispose()
+  await gameItemRenderer.render(stateManager, tileCentersApi, globeCenter)
+  labelRenderer?.syncFromTimestep(plan.steps[0], plan.crates, tileCentersApi)
+  labelRenderer?.syncPinsFromPlan(plan, tileCentersApi)
+  planPanel.update()
+}
+
+// ---------------------------------------------------------------------------
+// Wire inspector "Add Pin" button → enter PIN_PLACEMENT mode
+// ---------------------------------------------------------------------------
 inspectorPanel.onAddPin = (vehicleId) => {
   const fromTileId = stateManager.getVehicleLastTileId(vehicleId)
   if (fromTileId === null) return
   inputModeController.enterPinPlacement(vehicleId, fromTileId)
 }
 
-// Sync UI/cursor to mode changes
+// ---------------------------------------------------------------------------
+// Wire both panels' per-action remove buttons → mutate plan + full re-render
+// ---------------------------------------------------------------------------
+const handleRemoveAction = async (stepIndex: number, action: StepAction) => {
+  stateManager.removeAction(stepIndex, action)
+  await rerender()
+  inspectorPanel.refresh(stateManager.getPlan(), tileCentersApi)
+}
+inspectorPanel.onRemoveAction = handleRemoveAction
+planPanel.onRemoveAction = handleRemoveAction
+
+// ---------------------------------------------------------------------------
+// Sync UI / cursor when input mode changes
+// ---------------------------------------------------------------------------
 inputModeController.onChange((mode) => {
   if (mode.kind === 'PIN_PLACEMENT') {
     cancelButton.show()
@@ -60,12 +93,9 @@ inputModeController.onChange((mode) => {
   }
 })
 
-let labelRenderer: LabelRenderer | null = null
-let pinPlacementPreview: PinPlacementPreview | null = null
-let lastHoveredTile: TileCenter | null = null
-let globeCenter = new THREE.Vector3()
-
-// Mode-aware click handler
+// ---------------------------------------------------------------------------
+// Mode-aware canvas click handler
+// ---------------------------------------------------------------------------
 renderer.domElement.addEventListener('click', async (e) => {
   const mode = inputModeController.getMode()
 
@@ -94,19 +124,16 @@ renderer.domElement.addEventListener('click', async (e) => {
   if (mode.kind === 'PIN_PLACEMENT') {
     if (!lastHoveredTile) return
     stateManager.addVehicleStep(mode.vehicleId, lastHoveredTile.tile_id)
-
     pinPlacementPreview?.hide()
-    gameItemRenderer.dispose()
-    const plan = stateManager.getPlan()
-    await gameItemRenderer.render(stateManager, tileCentersApi, globeCenter)
-    labelRenderer?.syncFromTimestep(plan.steps[0], plan.crates, tileCentersApi)
-    labelRenderer?.syncPinsFromPlan(plan, tileCentersApi)
-    planPanel.update()
-    inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, plan, tileCentersApi)
+    await rerender()
+    inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, stateManager.getPlan(), tileCentersApi)
     inputModeController.enterNormal()
   }
 })
 
+// ---------------------------------------------------------------------------
+// Post-globe-load: pointer, preview, initial render, labels
+// ---------------------------------------------------------------------------
 globeScene.load().then(({ boundingSphere }) => {
   globeCenter = boundingSphere.center.clone()
   mainCamera.fitToGlobe(boundingSphere)
@@ -147,6 +174,9 @@ globeScene.load().then(({ boundingSphere }) => {
   labelRenderer.syncPinsFromPlan(plan, tileCentersApi)
 })
 
+// ---------------------------------------------------------------------------
+// Render loop
+// ---------------------------------------------------------------------------
 let lastTime = performance.now()
 function animate() {
   const now = performance.now()

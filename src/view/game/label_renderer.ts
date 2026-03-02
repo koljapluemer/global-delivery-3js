@@ -151,6 +151,8 @@ export class LabelRenderer {
         const { el, textEl } = this.createSmallBubble(item.label, item.vehicleId)
         this.container.appendChild(el)
         this.pinLabels.set(item.id, { el, textEl, worldPos: item.worldPosition.clone(), smoothRot: 0, })
+      } else {
+        this.pinLabels.get(item.id)!.worldPos.copy(item.worldPosition)
       }
     }
     for (const [id, entry] of this.pinLabels) {
