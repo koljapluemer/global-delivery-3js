@@ -1,11 +1,14 @@
 import * as THREE from 'three'
 import speechBubbleUrl from '../../assets/ui/speechbubble.png?url'
 import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
+import vehicleBubbleSvgRaw from '../../assets/ui/vehicle_bubble.svg?raw'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { Plan, Timestep } from '../../model/types/Plan'
 import type { Crate } from '../../model/types/Crate'
+import type { Vehicle } from '../../model/types/Vehicle'
 import type { EntityTarget } from '../../model/types/EntityTarget'
 import type { RouteLeg } from '../../controller/traveltime'
+import { hsvColor } from './color_utils'
 
 /** Width of the horizon blend zone (fraction of R·|O−C|). ~6–8° of arc. */
 const HORIZON_BLEND_EPSILON = 0.1
@@ -19,6 +22,13 @@ interface CrateLabelData {
   destinationCountry: string
   rewardMoney: number
   rewardStamps: number
+  entityId: number
+}
+
+interface VehicleLabelData {
+  worldPosition: THREE.Vector3
+  vehicleName: string
+  hue: number
   entityId: number
 }
 
@@ -56,6 +66,7 @@ export class LabelRenderer {
   onEntityClick: ((target: EntityTarget) => void) | null = null
   private container: HTMLDivElement
   private labels = new Map<number, LabelEntry>()
+  private vehicleLabels = new Map<number, LabelEntry>()
   private pinLabels = new Map<string, LabelEntry>()
   private pinLabelOffsets = new Map<string, number>()
   private routeLegLabels = new Map<string, RouteLegLabelEntry>()
@@ -125,6 +136,53 @@ export class LabelRenderer {
       })
     }
     this.setCrateLabels(data)
+  }
+
+  /** Sync vehicle bubble labels. Creates / updates / removes as needed. */
+  syncVehicleLabels(data: VehicleLabelData[]): void {
+    const seen = new Set<number>()
+    for (const item of data) {
+      seen.add(item.entityId)
+      if (!this.vehicleLabels.has(item.entityId)) {
+        const { el, textEl } = this.createVehicleBubble(item.vehicleName, item.hue, item.entityId)
+        this.container.appendChild(el)
+        this.vehicleLabels.set(item.entityId, {
+          el,
+          textEl,
+          worldPos: item.worldPosition.clone(),
+          smoothRot: 0,
+        })
+      } else {
+        const entry = this.vehicleLabels.get(item.entityId)!
+        entry.worldPos.copy(item.worldPosition)
+      }
+    }
+    for (const [id, entry] of this.vehicleLabels) {
+      if (!seen.has(id)) {
+        entry.el.remove()
+        this.vehicleLabels.delete(id)
+      }
+    }
+  }
+
+  /** Build vehicle label data from a timestep and push it to the vehicle label set. */
+  syncVehicleLabelsFromTimestep(timestep: Timestep, vehicles: Record<number, Vehicle>, tileApi: TileCentersApi): void {
+    const data: VehicleLabelData[] = []
+    for (const [tileIdStr, occupant] of Object.entries(timestep.tileOccupations)) {
+      if (occupant[0] !== 'VEHICLE') continue
+      const id = occupant[1]
+      const vehicle = vehicles[id]
+      if (!vehicle) continue
+      const tile = tileApi.getTileById(Number(tileIdStr))
+      if (!tile) continue
+      data.push({
+        worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
+        vehicleName: vehicle.name,
+        hue: vehicle.hue,
+        entityId: id,
+      })
+    }
+    this.syncVehicleLabels(data)
   }
 
   /** Sync pin labels to the destination tiles of every vehicle movement in the plan. */
@@ -225,6 +283,9 @@ export class LabelRenderer {
     for (const entry of this.labels.values()) {
       this.updateLabel(entry, delta)
     }
+    for (const entry of this.vehicleLabels.values()) {
+      this.updateLabel(entry, delta)
+    }
     for (const [id, entry] of this.pinLabels) {
       this.updatePinLabel(entry, id)
     }
@@ -236,6 +297,7 @@ export class LabelRenderer {
   dispose(): void {
     this.container.remove()
     this.labels.clear()
+    this.vehicleLabels.clear()
     this.pinLabels.clear()
     this.routeLegLabels.clear()
   }
@@ -288,6 +350,49 @@ export class LabelRenderer {
 
     el.appendChild(textEl)
     el.appendChild(rewardEl)
+    return { el, textEl }
+  }
+
+  private createVehicleBubble(vehicleName: string, hue: number, entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+    const hexColor = `#${hsvColor(hue).getHexString()}`
+    const coloredSvg = vehicleBubbleSvgRaw
+      .replace('#4CAF50', hexColor)
+      .replace('fill="#f8fafc"', 'fill="none"')
+    const dataUrl = `data:image/svg+xml,${encodeURIComponent(coloredSvg)}`
+
+    const el = document.createElement('div')
+    // SVG viewBox aspect ratio is 1129:608 ≈ 1.856; tail tip is at ~93% height, ~50% width
+    Object.assign(el.style, {
+      position: 'absolute',
+      width: '120px',
+      height: '65px',
+      backgroundImage: `url("${dataUrl}")`,
+      backgroundSize: '100% 100%',
+      backgroundRepeat: 'no-repeat',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: '14px',
+      paddingBottom: '18px',
+      pointerEvents: 'auto',
+      cursor: 'pointer',
+    })
+    el.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.onEntityClick?.({ kind: 'VEHICLE', id: entityId })
+    })
+
+    const textEl = document.createElement('span')
+    textEl.textContent = vehicleName
+    Object.assign(textEl.style, {
+      fontSize: '10px',
+      fontWeight: 'bold',
+      color: '#222',
+      textAlign: 'center',
+      lineHeight: '1.2',
+      pointerEvents: 'none',
+    })
+    el.appendChild(textEl)
     return { el, textEl }
   }
 
