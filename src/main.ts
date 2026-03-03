@@ -141,6 +141,10 @@ inspectorPanel.onRemoveCargoIntent = async (stepIndex, actionIndex) => {
   await rerender()
   inspectorPanel.refresh(intentManager.getPlan(), derived, tileCentersApi)
 }
+inspectorPanel.onUnloadFromStep = (vehicleId, stepIndex, crateId) => {
+  inspectorPanel.hide()
+  inputModeController.enterCrateDrop(vehicleId, stepIndex, crateId)
+}
 
 planPanel.onRemoveJourneyIntent = async (stepIndex, vehicleId) => {
   undoHistory.snapshot(intentManager.getPlan())

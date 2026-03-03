@@ -33,12 +33,20 @@ function inspectVehicle(
       if (!journey) continue
       const tile = tileApi.getTileById(journey.toTileId)
       const country = tile?.country_name ?? 'open sea'
+      const snap = derived.stepSnapshots[step.stepIndex]
+      const onBoard = snap
+        ? [...(snap.vehicleCargo.get(id) ?? [])].map((crateId) => ({
+            crateId,
+            label: plan.crates[crateId]?.destinationCountry ?? `Crate #${crateId}`,
+          }))
+        : []
       const entry: JourneyStepEntry = {
         kind: 'JOURNEY',
         stepIndex: step.stepIndex,
         vehicleId: id,
         stepLabel: `#${step.stepIndex}`,
         description: `Arrives in ${country}`,
+        onBoard,
       }
       stepEntries.push(entry)
     } else {

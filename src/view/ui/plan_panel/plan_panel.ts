@@ -44,6 +44,9 @@ export class PlanPanel {
       return
     }
 
+    // Before-all journey drop zone
+    this.aside.appendChild(this.createJourneyDropZone('before-all'))
+
     for (const step of derived.steps) {
       if (step.kind === 'JOURNEY') {
         this.aside.appendChild(this.buildJourneySection(step as DerivedJourneyStep, plan))
@@ -54,6 +57,9 @@ export class PlanPanel {
         }
       }
     }
+
+    // After-all journey drop zone
+    this.aside.appendChild(this.createJourneyDropZone('after-all'))
   }
 
   // ---------------------------------------------------------------------------
@@ -149,8 +155,7 @@ export class PlanPanel {
     section.appendChild(journeysDiv)
 
     // Drop target for journey intents after this step
-    const dropZone = this.createJourneyDropZone(step.stepIndex)
-    section.appendChild(dropZone)
+    section.appendChild(this.createJourneyDropZone(step.stepIndex))
 
     return section
   }
@@ -163,9 +168,14 @@ export class PlanPanel {
       paddingLeft: '8px',
     })
 
+    // Drop zone before the first action
+    section.appendChild(this.createCargoDropZone(step.stepIndex, 0))
+
     for (let actionIndex = 0; actionIndex < step.actions.length; actionIndex++) {
       const action = step.actions[actionIndex]
       section.appendChild(this.buildCargoCard(action, step.stepIndex, actionIndex, plan))
+      // Drop zone after each action
+      section.appendChild(this.createCargoDropZone(step.stepIndex, actionIndex + 1))
     }
 
     return section
@@ -235,30 +245,73 @@ export class PlanPanel {
     return card
   }
 
-  private createJourneyDropZone(afterStepIndex: number): HTMLElement {
+  private createJourneyDropZone(afterStepIndex: number | 'before-all' | 'after-all'): HTMLElement {
     const zone = document.createElement('div')
     Object.assign(zone.style, {
-      height: '8px',
+      height: '20px',
       borderRadius: '4px',
-      marginTop: '4px',
-      transition: 'background 0.15s',
+      margin: '4px 0',
+      border: '1px dashed rgba(255,255,255,0.18)',
+      transition: 'background 0.15s, border-color 0.15s',
     })
 
     zone.addEventListener('dragover', (e) => {
       if (!e.dataTransfer?.types.includes('application/journey-intent')) return
       e.preventDefault()
-      zone.style.background = 'rgba(255,255,255,0.25)'
+      zone.style.background = 'rgba(255,255,255,0.22)'
+      zone.style.borderColor = 'rgba(255,255,255,0.5)'
     })
     zone.addEventListener('dragleave', () => {
       zone.style.background = ''
+      zone.style.borderColor = 'rgba(255,255,255,0.18)'
     })
     zone.addEventListener('drop', (e) => {
       zone.style.background = ''
+      zone.style.borderColor = 'rgba(255,255,255,0.18)'
       if (!e.dataTransfer) return
       const raw = e.dataTransfer.getData('application/journey-intent')
       if (!raw) return
       const { vehicleId, fromStepIndex } = JSON.parse(raw) as { vehicleId: number; fromStepIndex: number }
-      this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, afterStepIndex + 1)
+      if (afterStepIndex === 'before-all') {
+        this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, 'before-all')
+      } else if (afterStepIndex === 'after-all') {
+        this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, 'after-all')
+      } else {
+        this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, afterStepIndex + 1)
+      }
+    })
+
+    return zone
+  }
+
+  private createCargoDropZone(targetStepIndex: number, targetActionIndex: number): HTMLElement {
+    const zone = document.createElement('div')
+    Object.assign(zone.style, {
+      height: '12px',
+      borderRadius: '4px',
+      margin: '2px 0',
+      border: '1px dashed rgba(255,255,255,0.12)',
+      transition: 'background 0.15s, border-color 0.15s',
+    })
+
+    zone.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types.includes('application/cargo-intent')) return
+      e.preventDefault()
+      zone.style.background = 'rgba(255,255,255,0.2)'
+      zone.style.borderColor = 'rgba(255,255,255,0.45)'
+    })
+    zone.addEventListener('dragleave', () => {
+      zone.style.background = ''
+      zone.style.borderColor = 'rgba(255,255,255,0.12)'
+    })
+    zone.addEventListener('drop', (e) => {
+      zone.style.background = ''
+      zone.style.borderColor = 'rgba(255,255,255,0.12)'
+      if (!e.dataTransfer) return
+      const raw = e.dataTransfer.getData('application/cargo-intent')
+      if (!raw) return
+      const { fromStepIndex, fromActionIndex } = JSON.parse(raw) as { fromStepIndex: number; fromActionIndex: number }
+      this.onMoveCargoIntent?.(fromStepIndex, fromActionIndex, targetStepIndex, targetActionIndex)
     })
 
     return zone

@@ -4,6 +4,7 @@ export interface JourneyStepEntry {
   vehicleId: number
   stepLabel: string
   description: string
+  onBoard: readonly { crateId: number; label: string }[]
 }
 
 export interface CargoStepEntry {

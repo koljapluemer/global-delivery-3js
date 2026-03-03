@@ -13,6 +13,8 @@ export class InspectorPanel {
   onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
   /** Called when the user removes a cargo intent from a step. */
   onRemoveCargoIntent: ((stepIndex: number, actionIndex: number) => void) | null = null
+  /** Called when the user initiates an unload/transfer from a journey step. */
+  onUnloadFromStep: ((vehicleId: number, stepIndex: number, crateId: number) => void) | null = null
 
   private aside: HTMLElement | null = null
   private body: HTMLElement | null = null
@@ -119,10 +121,17 @@ export class InspectorPanel {
       const li = document.createElement('li')
       Object.assign(li.style, {
         display: 'flex',
+        flexDirection: 'column',
+        gap: '0.2rem',
+        padding: '0.3rem 0',
+      })
+
+      const topRow = document.createElement('div')
+      Object.assign(topRow.style, {
+        display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: '0.5rem',
-        padding: '0.2rem 0',
       })
 
       const text = document.createElement('span')
@@ -157,8 +166,34 @@ export class InspectorPanel {
         }
       })
 
-      li.appendChild(text)
-      li.appendChild(removeBtn)
+      topRow.appendChild(text)
+      topRow.appendChild(removeBtn)
+      li.appendChild(topRow)
+
+      if (entry.kind === 'JOURNEY' && entry.onBoard.length > 0) {
+        const btnRow = document.createElement('div')
+        Object.assign(btnRow.style, { display: 'flex', flexWrap: 'wrap', gap: '4px', paddingLeft: '8px' })
+        for (const { crateId, label } of entry.onBoard) {
+          const unloadBtn = document.createElement('button')
+          unloadBtn.textContent = `Unload ${label} →`
+          Object.assign(unloadBtn.style, {
+            fontSize: '10px',
+            padding: '2px 7px',
+            borderRadius: '10px',
+            border: '1px solid rgba(255,255,255,0.25)',
+            background: 'rgba(255,255,255,0.08)',
+            color: '#fff',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          })
+          unloadBtn.addEventListener('click', () => {
+            this.onUnloadFromStep?.(entry.vehicleId, entry.stepIndex, crateId)
+          })
+          btnRow.appendChild(unloadBtn)
+        }
+        li.appendChild(btnRow)
+      }
+
       ul.appendChild(li)
     }
 

@@ -168,7 +168,7 @@ export class PinContextMenu {
     row.appendChild(text)
 
     const btn = document.createElement('button')
-    btn.textContent = 'Unload here →'
+    btn.textContent = 'Unload / Transfer →'
     Object.assign(btn.style, {
       fontSize: '11px',
       background: 'rgba(0,0,0,0.25)',
