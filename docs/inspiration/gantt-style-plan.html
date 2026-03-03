@@ -1,0 +1,93 @@
+<html>
+
+<body>
+
+    <div id="plan">
+        <div class="step journey-step">
+            <div>timestep cost: 124</div>
+            <div class="journeys">
+                <div class="player-action journey" style="min-height: 124px">
+                    <em>My car</em> goes to <em>Argentina</em>
+                </div>
+                <div class="player-action journey" style="min-height: 65px; height:65px;">
+                    <em>Little boat</em> goes to <em>open sea</em>
+                </div>
+            </div>
+        </div>
+
+        <div class="step cargo-step">
+            <div class="actions">
+                <div class="player-action journey">
+                    <em>My car</em> unloads <em>Crate to Germany</em> to <em>spot in Argentina</em>
+                </div>
+                <div class="player-action journey">
+                    <em>Little Boat</em> transfers <em>Crate to Brazil</em> to <em>spot in Argentina</em>
+                </div>
+                <div class="player-action journey">
+                    <em>My car</em> transfers <em>Crate to Netherlands</em> to <em>Little Boat</em>
+                </div>
+                <div class="player-action journey">
+                    <em>My Cart</em> loads <em>Crate to Brazil</em></em>
+                </div>
+            </div>
+        </div>
+
+        <div class="step journey-step">
+            <div>timestep cost: 76</div>
+            <div class="journeys">
+                <div class="player-action journey" style="min-height: 76px">
+                    <em>My car</em> goes to <em>Brazil</em>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="step journey-step">
+            <div>timestep cost: 301</div>
+            <div class="journeys">
+
+                <div class="player-action journey" style="min-height: 301px; height:301px;">
+                    <em>Little boat</em> goes to <em>open sea</em>
+                </div>
+            </div>
+        </div>
+
+        <div class="step cargo-step">
+            <div class="actions">
+                <div class="player-action journey">
+                    <em>My car</em> delivers <em>Crate to Brazil</em>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+<style>
+    .player-action {
+        background-color: #b8b8b8;
+    }
+
+    .journeys {
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+    }
+
+    .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+
+    .cargo-step {
+        background-color: rgb(158, 229, 170);
+    }
+
+    .step {
+        padding: 16px;
+    }
+</style>
+
+</html>

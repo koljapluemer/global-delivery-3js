@@ -1,28 +1,18 @@
 import { createElement, Trash2 } from 'lucide'
-import type { Plan } from '../../../model/types/Plan'
+import type { Plan, CargoIntent } from '../../../model/types/Plan'
+import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep, DerivedCargoAction } from '../../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
-import type { NavApi } from '../../../controller/navigation'
-import type { StepAction } from '../../../model/types/StepAction'
-import type { PlanEvent, StepSummary } from './types'
-import { derivePlanSummary } from './plan_event_deriver'
-import { deriveRouteLegs } from '../../../controller/traveltime'
 
 export class PlanPanel {
-  /** Called when the user removes an individual action from a step. */
-  onRemoveAction: ((stepIndex: number, action: StepAction) => void) | null = null
+  onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
+  onRemoveCargoIntent: ((stepIndex: number, actionIndex: number) => void) | null = null
+  onMoveJourneyIntent: ((vehicleId: number, fromStepIndex: number, toStepIndex: number | 'before-all' | 'after-all') => void) | null = null
+  onMoveCargoIntent: ((fromStepIndex: number, fromActionIndex: number, toStepIndex: number, toActionIndex: number) => void) | null = null
 
-  private readonly plan: Plan
-  private readonly tileApi: TileCentersApi
-  private readonly navApi: NavApi
   private aside: HTMLElement | null = null
+  private tileApi: TileCentersApi | null = null
 
-  constructor(plan: Plan, tileApi: TileCentersApi, navApi: NavApi) {
-    this.plan = plan
-    this.tileApi = tileApi
-    this.navApi = navApi
-  }
-
-  mount(container: HTMLElement): void {
+  mount(container: HTMLElement, tileApi: TileCentersApi): void {
     const aside = document.createElement('aside')
     Object.assign(aside.style, {
       position: 'fixed',
@@ -34,76 +24,189 @@ export class PlanPanel {
       background: 'rgba(0,0,0,0.6)',
       color: '#fff',
       zIndex: '10',
+      minWidth: '220px',
+      maxWidth: '300px',
     })
     this.aside = aside
+    this.tileApi = tileApi
     container.appendChild(aside)
-    this.rebuild()
   }
 
-  /** Re-derive plan summary and repopulate the panel. */
-  update(): void { this.rebuild() }
-
-  private rebuild(): void {
-    if (!this.aside) return
+  update(plan: Plan, derived: DerivedPlanState): void {
+    if (!this.aside || !this.tileApi) return
     this.aside.innerHTML = ''
-    const summaries = derivePlanSummary(this.plan, this.tileApi)
-    const legs = deriveRouteLegs(this.plan, this.navApi)
-    const maxTraveltimeByStep = new Map<number, number>()
-    for (const leg of legs) {
-      if (leg.isCounted) {
-        maxTraveltimeByStep.set(leg.stepIndex, leg.traveltime)
+
+    if (derived.steps.length === 0) {
+      const empty = document.createElement('p')
+      empty.textContent = 'No steps yet. Click a vehicle to add waypoints.'
+      Object.assign(empty.style, { fontSize: '12px', opacity: '0.6', margin: '0' })
+      this.aside.appendChild(empty)
+      return
+    }
+
+    for (const step of derived.steps) {
+      if (step.kind === 'JOURNEY') {
+        this.aside.appendChild(this.buildJourneySection(step as DerivedJourneyStep, plan))
+      } else {
+        const cargoStep = step as DerivedCargoStep
+        if (cargoStep.actions.length > 0) {
+          this.aside.appendChild(this.buildCargoSection(cargoStep, plan))
+        }
       }
     }
-    for (const summary of summaries) {
-      const tt = maxTraveltimeByStep.get(summary.stepIndex) ?? 0
-      this.aside.appendChild(this.buildStepSection(summary, tt))
-    }
   }
 
-  private buildStepSection(summary: StepSummary, maxTraveltime: number): HTMLElement {
+  // ---------------------------------------------------------------------------
+  // Private — section builders
+  // ---------------------------------------------------------------------------
+
+  private buildJourneySection(step: DerivedJourneyStep, plan: Plan): HTMLElement {
     const section = document.createElement('section')
     Object.assign(section.style, { marginBottom: '0.75rem' })
 
     const heading = document.createElement('h2')
-    Object.assign(heading.style, { display: 'flex', alignItems: 'center', gap: '0.5rem' })
+    Object.assign(heading.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.5rem',
+      margin: '0 0 0.4rem',
+      fontSize: '13px',
+      fontWeight: 'bold',
+    })
 
     const labelSpan = document.createElement('span')
-    labelSpan.textContent = summary.label
+    labelSpan.textContent = `Journey #${step.stepIndex}`
     heading.appendChild(labelSpan)
 
-    if (maxTraveltime > 0) {
+    if (step.stepTraveltime > 0) {
       const ttSpan = document.createElement('span')
-      ttSpan.textContent = `⏱ ${maxTraveltime}`
+      ttSpan.textContent = `⏱ ${step.stepTraveltime}`
       Object.assign(ttSpan.style, { fontSize: '11px', fontWeight: 'normal', opacity: '0.75' })
       heading.appendChild(ttSpan)
     }
 
     section.appendChild(heading)
 
-    if (summary.events.length > 0) {
-      const ul = document.createElement('ul')
-      Object.assign(ul.style, { listStyle: 'none', margin: '0.25rem 0 0', padding: '0' })
-      for (const event of summary.events) {
-        ul.appendChild(this.buildEventRow(event))
-      }
-      section.appendChild(ul)
+    const journeysDiv = document.createElement('div')
+    Object.assign(journeysDiv.style, { display: 'flex', flexDirection: 'row', gap: '4px', flexWrap: 'wrap' })
+
+    for (const j of step.journeys) {
+      const vehicle = plan.vehicles[j.vehicleId]
+      const tile = this.tileApi!.getTileById(j.toTileId)
+      const destText = tile?.country_name ?? 'open sea'
+
+      const card = document.createElement('div')
+      Object.assign(card.style, {
+        background: 'rgba(255,255,255,0.08)',
+        borderRadius: '6px',
+        padding: '6px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '6px',
+        cursor: 'grab',
+        minHeight: `${Math.max(28, j.traveltime)}px`,
+      })
+      card.draggable = true
+      card.dataset.stepIndex = String(step.stepIndex)
+      card.dataset.vehicleId = String(j.vehicleId)
+
+      const text = document.createElement('span')
+      text.textContent = `${vehicle?.name ?? '?'} → ${destText}`
+      Object.assign(text.style, { fontSize: '12px', flex: '1' })
+
+      const removeBtn = document.createElement('button')
+      removeBtn.title = 'Remove journey'
+      Object.assign(removeBtn.style, {
+        flex: '0 0 auto',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '2px',
+        color: '#ff6b6b',
+        lineHeight: '0',
+      })
+      removeBtn.appendChild(createElement(Trash2, { width: 12, height: 12 }))
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        this.onRemoveJourneyIntent?.(step.stepIndex, j.vehicleId)
+      })
+
+      card.addEventListener('dragstart', (e) => {
+        if (!e.dataTransfer) return
+        e.dataTransfer.setData('application/journey-intent', JSON.stringify({
+          vehicleId: j.vehicleId,
+          fromStepIndex: step.stepIndex,
+        }))
+        e.dataTransfer.effectAllowed = 'move'
+      })
+
+      card.appendChild(text)
+      card.appendChild(removeBtn)
+      journeysDiv.appendChild(card)
+    }
+
+    section.appendChild(journeysDiv)
+
+    // Drop target for journey intents after this step
+    const dropZone = this.createJourneyDropZone(step.stepIndex)
+    section.appendChild(dropZone)
+
+    return section
+  }
+
+  private buildCargoSection(step: DerivedCargoStep, plan: Plan): HTMLElement {
+    const section = document.createElement('section')
+    Object.assign(section.style, {
+      marginBottom: '0.75rem',
+      borderLeft: '2px solid rgba(255,255,255,0.15)',
+      paddingLeft: '8px',
+    })
+
+    for (let actionIndex = 0; actionIndex < step.actions.length; actionIndex++) {
+      const action = step.actions[actionIndex]
+      section.appendChild(this.buildCargoCard(action, step.stepIndex, actionIndex, plan))
     }
 
     return section
   }
 
-  private buildEventRow(event: PlanEvent): HTMLElement {
-    const li = document.createElement('li')
-    Object.assign(li.style, {
+  private buildCargoCard(
+    action: DerivedCargoAction,
+    stepIndex: number,
+    actionIndex: number,
+    plan: Plan,
+  ): HTMLElement {
+    const card = document.createElement('div')
+    Object.assign(card.style, {
+      background: action.valid ? 'rgba(255,255,255,0.07)' : 'rgba(255,80,80,0.15)',
+      borderRadius: '6px',
+      padding: '5px 8px',
+      marginBottom: '3px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: '0.4rem',
-      padding: '0.15rem 0',
+      gap: '6px',
+      cursor: 'grab',
+      border: action.valid ? 'none' : '1px solid rgba(255,80,80,0.4)',
     })
+    card.draggable = true
+    card.dataset.stepIndex = String(stepIndex)
+    card.dataset.actionIndex = String(actionIndex)
 
     const text = document.createElement('span')
-    text.textContent = this.eventToText(event)
+    text.textContent = this.describeCargoIntent(action.intent, plan)
+    Object.assign(text.style, { fontSize: '11px', flex: '1' })
+
+    if (!action.valid && action.invalidReason) {
+      const warn = document.createElement('span')
+      warn.textContent = '⚠'
+      warn.title = action.invalidReason
+      Object.assign(warn.style, { color: '#ff8888', marginRight: '4px' })
+      card.appendChild(warn)
+    }
+
+    card.appendChild(text)
 
     const removeBtn = document.createElement('button')
     removeBtn.title = 'Remove action'
@@ -116,33 +219,65 @@ export class PlanPanel {
       color: '#ff6b6b',
       lineHeight: '0',
     })
-    removeBtn.appendChild(createElement(Trash2, { width: 13, height: 13 }))
-    removeBtn.addEventListener('click', () => {
-      this.onRemoveAction?.(event.stepIndex, this.eventToAction(event))
+    removeBtn.appendChild(createElement(Trash2, { width: 12, height: 12 }))
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.onRemoveCargoIntent?.(stepIndex, actionIndex)
+    })
+    card.appendChild(removeBtn)
+
+    card.addEventListener('dragstart', (e) => {
+      if (!e.dataTransfer) return
+      e.dataTransfer.setData('application/cargo-intent', JSON.stringify({ fromStepIndex: stepIndex, fromActionIndex: actionIndex }))
+      e.dataTransfer.effectAllowed = 'move'
     })
 
-    li.appendChild(text)
-    li.appendChild(removeBtn)
-    return li
+    return card
   }
 
-  private eventToText(event: PlanEvent): string {
-    const loc = (country: string | null): string => country ?? 'open sea'
-    switch (event.kind) {
-      case 'VEHICLE_MOVED':
-        return `${event.vehicleName} arrives in ${loc(event.toCountry)}`
-      case 'CRATE_LOADED':
-        return `Crate → ${event.crateDestination} loaded onto ${event.vehicleName}`
-      case 'CRATE_UNLOADED':
-        return `${event.vehicleName} unloads Crate → ${event.crateDestination} in ${loc(event.inCountry)}`
-    }
+  private createJourneyDropZone(afterStepIndex: number): HTMLElement {
+    const zone = document.createElement('div')
+    Object.assign(zone.style, {
+      height: '8px',
+      borderRadius: '4px',
+      marginTop: '4px',
+      transition: 'background 0.15s',
+    })
+
+    zone.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types.includes('application/journey-intent')) return
+      e.preventDefault()
+      zone.style.background = 'rgba(255,255,255,0.25)'
+    })
+    zone.addEventListener('dragleave', () => {
+      zone.style.background = ''
+    })
+    zone.addEventListener('drop', (e) => {
+      zone.style.background = ''
+      if (!e.dataTransfer) return
+      const raw = e.dataTransfer.getData('application/journey-intent')
+      if (!raw) return
+      const { vehicleId, fromStepIndex } = JSON.parse(raw) as { vehicleId: number; fromStepIndex: number }
+      this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, afterStepIndex + 1)
+    })
+
+    return zone
   }
 
-  private eventToAction(event: PlanEvent): StepAction {
-    switch (event.kind) {
-      case 'VEHICLE_MOVED': return { kind: 'VEHICLE_MOVED', vehicleId: event.vehicleId }
-      case 'CRATE_LOADED':  return { kind: 'CRATE_LOADED',  crateId: event.crateId }
-      case 'CRATE_UNLOADED': return { kind: 'CRATE_UNLOADED', crateId: event.crateId }
+  private describeCargoIntent(intent: CargoIntent, plan: Plan): string {
+    const vehicleName = (id: number) => plan.vehicles[id]?.name ?? `Vehicle ${id}`
+    const crateDest = (id: number) => plan.crates[id]?.destinationCountry ?? `Crate ${id}`
+    const tileName = (tileId: number) => this.tileApi!.getTileById(tileId)?.country_name ?? 'open sea'
+
+    switch (intent.kind) {
+      case 'LOAD':
+        return `${vehicleName(intent.vehicleId)} loads Crate→${crateDest(intent.crateId)}`
+      case 'UNLOAD':
+        return `${vehicleName(intent.vehicleId)} unloads Crate→${crateDest(intent.crateId)} to ${tileName(intent.toTileId)}`
+      case 'TRANSFER':
+        return `${vehicleName(intent.fromVehicleId)} transfers Crate→${crateDest(intent.crateId)} to ${vehicleName(intent.toVehicleId)}`
+      case 'DELIVER':
+        return `${vehicleName(intent.vehicleId)} delivers Crate→${crateDest(intent.crateId)}`
     }
   }
 }

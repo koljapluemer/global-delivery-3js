@@ -1,140 +1,152 @@
 import type { Plan } from '../../../model/types/Plan'
+import type { DerivedPlanState } from '../../../model/types/DerivedPlanState'
 import type { EntityTarget } from '../../../model/types/EntityTarget'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
-import type { CrateInspection, InspectionContent, StepEntry, VehicleInspection } from './types'
-import type { StepAction } from '../../../model/types/StepAction'
+import type {
+  CrateInspection,
+  InspectionContent,
+  JourneyStepEntry,
+  CargoStepEntry,
+  StepEntry,
+  VehicleInspection,
+} from './types'
 
 function resolveCountry(tileId: number, tileApi: TileCentersApi): string | null {
   return tileApi.getTileById(tileId)?.country_name ?? null
 }
 
-function inspectVehicle(id: number, plan: Plan, tileApi: TileCentersApi): VehicleInspection {
+function inspectVehicle(
+  id: number,
+  plan: Plan,
+  derived: DerivedPlanState,
+  tileApi: TileCentersApi,
+): VehicleInspection {
   const vehicle = plan.vehicles[id]
-
-  // Location at step 0
-  let location: string | null = null
-  if (plan.steps.length > 0) {
-    for (const [tileIdStr, [kind, entityId]] of Object.entries(plan.steps[0].tileOccupations)) {
-      if (kind === 'VEHICLE' && entityId === id) {
-        location = resolveCountry(Number(tileIdStr), tileApi)
-        break
-      }
-    }
-  }
+  const tileId = plan.initialState.vehiclePositions[id]
+  const location = tileId !== undefined ? resolveCountry(tileId, tileApi) : null
 
   const stepEntries: StepEntry[] = []
 
-  for (let i = 1; i < plan.steps.length; i++) {
-    const prev = plan.steps[i - 1]
-    const curr = plan.steps[i]
-    const label = `#${i}`
-
-    // Vehicle moved
-    let prevTile: number | undefined
-    let currTile: number | undefined
-    for (const [tileIdStr, [kind, entityId]] of Object.entries(prev.tileOccupations)) {
-      if (kind === 'VEHICLE' && entityId === id) { prevTile = Number(tileIdStr); break }
-    }
-    for (const [tileIdStr, [kind, entityId]] of Object.entries(curr.tileOccupations)) {
-      if (kind === 'VEHICLE' && entityId === id) { currTile = Number(tileIdStr); break }
-    }
-    if (currTile !== undefined && prevTile !== currTile) {
-      const country = resolveCountry(currTile, tileApi) ?? 'open sea'
-      const action: StepAction = { kind: 'VEHICLE_MOVED', vehicleId: id }
-      stepEntries.push({ stepLabel: label, description: `Arrives in ${country}`, stepIndex: i, action })
-    }
-
-    // Crates loaded onto this vehicle
-    for (const [crateIdStr, vehicleId] of Object.entries(curr.transportedCargo)) {
-      if (vehicleId !== id) continue
-      const crateId = Number(crateIdStr)
-      if (crateId in prev.transportedCargo) continue
-      const dest = plan.crates[crateId].destinationCountry
-      const action: StepAction = { kind: 'CRATE_LOADED', crateId }
-      stepEntries.push({ stepLabel: label, description: `Loads Crate → ${dest}`, stepIndex: i, action })
-    }
-
-    // Crates unloaded from this vehicle
-    for (const [crateIdStr, vehicleId] of Object.entries(prev.transportedCargo)) {
-      if (vehicleId !== id) continue
-      const crateId = Number(crateIdStr)
-      if (crateId in curr.transportedCargo) continue
-      const dest = plan.crates[crateId].destinationCountry
-      let unloadTile: number | undefined
-      for (const [tileIdStr, [kind, entityId]] of Object.entries(curr.tileOccupations)) {
-        if (kind === 'CRATE' && entityId === crateId) { unloadTile = Number(tileIdStr); break }
+  for (const step of derived.steps) {
+    if (step.kind === 'JOURNEY') {
+      const journey = step.journeys.find((j) => j.vehicleId === id)
+      if (!journey) continue
+      const tile = tileApi.getTileById(journey.toTileId)
+      const country = tile?.country_name ?? 'open sea'
+      const entry: JourneyStepEntry = {
+        kind: 'JOURNEY',
+        stepIndex: step.stepIndex,
+        vehicleId: id,
+        stepLabel: `#${step.stepIndex}`,
+        description: `Arrives in ${country}`,
       }
-      const country = unloadTile !== undefined ? resolveCountry(unloadTile, tileApi) ?? 'open sea' : 'open sea'
-      const action: StepAction = { kind: 'CRATE_UNLOADED', crateId }
-      stepEntries.push({ stepLabel: label, description: `Unloads Crate → ${dest} in ${country}`, stepIndex: i, action })
+      stepEntries.push(entry)
+    } else {
+      for (let actionIndex = 0; actionIndex < step.actions.length; actionIndex++) {
+        const { intent, valid } = step.actions[actionIndex]
+        let description: string | null = null
+
+        if (intent.kind === 'LOAD' && intent.vehicleId === id) {
+          const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
+          description = `Loads Crate→${dest}`
+        } else if (intent.kind === 'UNLOAD' && intent.vehicleId === id) {
+          const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
+          const country = resolveCountry(intent.toTileId, tileApi) ?? 'open sea'
+          description = `Unloads Crate→${dest} in ${country}`
+        } else if (intent.kind === 'DELIVER' && intent.vehicleId === id) {
+          const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
+          description = `Delivers Crate→${dest}`
+        } else if (intent.kind === 'TRANSFER' && (intent.fromVehicleId === id || intent.toVehicleId === id)) {
+          const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
+          const fromName = plan.vehicles[intent.fromVehicleId]?.name ?? '?'
+          const toName = plan.vehicles[intent.toVehicleId]?.name ?? '?'
+          description = `${fromName} transfers Crate→${dest} to ${toName}`
+        }
+
+        if (description !== null) {
+          const entry: CargoStepEntry = {
+            kind: 'CARGO',
+            stepIndex: step.stepIndex,
+            actionIndex,
+            stepLabel: `#${step.stepIndex}`,
+            description,
+            valid,
+          }
+          stepEntries.push(entry)
+        }
+      }
     }
   }
 
-  return { kind: 'VEHICLE', name: vehicle.name, location, stepEntries }
+  return { kind: 'VEHICLE', name: vehicle?.name ?? '?', location, stepEntries }
 }
 
-function inspectCrate(id: number, plan: Plan, tileApi: TileCentersApi): CrateInspection {
+function inspectCrate(
+  id: number,
+  plan: Plan,
+  derived: DerivedPlanState,
+  tileApi: TileCentersApi,
+): CrateInspection {
   const crate = plan.crates[id]
-
-  // Location at step 0
-  let location: string | null = null
-  let locationNote: string | null = null
-  if (plan.steps.length > 0) {
-    const step0 = plan.steps[0]
-    for (const [tileIdStr, [kind, entityId]] of Object.entries(step0.tileOccupations)) {
-      if (kind === 'CRATE' && entityId === id) {
-        location = resolveCountry(Number(tileIdStr), tileApi)
-        break
-      }
-    }
-    if (location === null && id in step0.transportedCargo) {
-      const vehicleId = step0.transportedCargo[id]
-      const vehicleName = plan.vehicles[vehicleId].name
-      locationNote = `aboard ${vehicleName}`
-    }
-  }
+  const tileId = plan.initialState.cratePositions[id]
+  const location = tileId !== undefined ? resolveCountry(tileId, tileApi) : null
+  const locationNote: string | null = null
 
   const stepEntries: StepEntry[] = []
 
-  for (let i = 1; i < plan.steps.length; i++) {
-    const prev = plan.steps[i - 1]
-    const curr = plan.steps[i]
-    const label = `#${i}`
+  for (const step of derived.steps) {
+    if (step.kind !== 'CARGO') continue
+    for (let actionIndex = 0; actionIndex < step.actions.length; actionIndex++) {
+      const { intent, valid } = step.actions[actionIndex]
+      let description: string | null = null
 
-    // Loaded
-    if (id in curr.transportedCargo && !(id in prev.transportedCargo)) {
-      const vehicleId = curr.transportedCargo[id]
-      const vehicleName = plan.vehicles[vehicleId].name
-      const action: StepAction = { kind: 'CRATE_LOADED', crateId: id }
-      stepEntries.push({ stepLabel: label, description: `Loaded onto ${vehicleName}`, stepIndex: i, action })
-    }
-
-    // Unloaded
-    if (id in prev.transportedCargo && !(id in curr.transportedCargo)) {
-      const vehicleId = prev.transportedCargo[id]
-      const vehicleName = plan.vehicles[vehicleId].name
-      let unloadTile: number | undefined
-      for (const [tileIdStr, [kind, entityId]] of Object.entries(curr.tileOccupations)) {
-        if (kind === 'CRATE' && entityId === id) { unloadTile = Number(tileIdStr); break }
+      if (intent.kind === 'LOAD' && intent.crateId === id) {
+        const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
+        description = `Loaded onto ${vehicleName}`
+      } else if (intent.kind === 'UNLOAD' && intent.crateId === id) {
+        const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
+        const country = resolveCountry(intent.toTileId, tileApi) ?? 'open sea'
+        description = `Unloaded in ${country} by ${vehicleName}`
+      } else if (intent.kind === 'DELIVER' && intent.crateId === id) {
+        const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
+        description = `Delivered by ${vehicleName}`
+      } else if (intent.kind === 'TRANSFER' && intent.crateId === id) {
+        const fromName = plan.vehicles[intent.fromVehicleId]?.name ?? '?'
+        const toName = plan.vehicles[intent.toVehicleId]?.name ?? '?'
+        description = `Transferred from ${fromName} to ${toName}`
       }
-      const country = unloadTile !== undefined ? resolveCountry(unloadTile, tileApi) ?? 'open sea' : 'open sea'
-      const action: StepAction = { kind: 'CRATE_UNLOADED', crateId: id }
-      stepEntries.push({ stepLabel: label, description: `Unloaded in ${country} by ${vehicleName}`, stepIndex: i, action })
+
+      if (description !== null) {
+        const entry: CargoStepEntry = {
+          kind: 'CARGO',
+          stepIndex: step.stepIndex,
+          actionIndex,
+          stepLabel: `#${step.stepIndex}`,
+          description,
+          valid,
+        }
+        stepEntries.push(entry)
+      }
     }
   }
 
   return {
     kind: 'CRATE',
-    destinationCountry: crate.destinationCountry,
-    rewardMoney: crate.rewardMoney,
-    rewardStamps: crate.rewardStamps,
+    destinationCountry: crate?.destinationCountry ?? '?',
+    rewardMoney: crate?.rewardMoney ?? 0,
+    rewardStamps: crate?.rewardStamps ?? 0,
     location,
     locationNote,
     stepEntries,
   }
 }
 
-export function inspectEntity(target: EntityTarget, plan: Plan, tileApi: TileCentersApi): InspectionContent {
-  if (target.kind === 'VEHICLE') return inspectVehicle(target.id, plan, tileApi)
-  return inspectCrate(target.id, plan, tileApi)
+export function inspectEntity(
+  target: EntityTarget,
+  plan: Plan,
+  derived: DerivedPlanState,
+  tileApi: TileCentersApi,
+): InspectionContent {
+  if (target.kind === 'VEHICLE') return inspectVehicle(target.id, plan, derived, tileApi)
+  return inspectCrate(target.id, plan, derived, tileApi)
 }

@@ -63,17 +63,13 @@ export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): P
     crates[i] = { destinationCountry, rewardMoney, rewardStamps }
   }
 
-  const tileOccupations: Record<number, ['VEHICLE' | 'CRATE', number]> = {
-    [carTileId]: ['VEHICLE', 0],
-    [boatTileId]: ['VEHICLE', 1],
-  }
-  for (let i = 0; i < 6; i++) {
-    tileOccupations[crateTileIds[i]] = ['CRATE', i]
-  }
-
   return {
     vehicles,
     crates,
-    steps: [{ tileOccupations, transportedCargo: {} }],
+    initialState: {
+      vehiclePositions: { 0: carTileId, 1: boatTileId },
+      cratePositions: Object.fromEntries(crateTileIds.map((id, i) => [i, id])),
+    },
+    steps: [],
   }
 }

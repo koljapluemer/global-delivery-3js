@@ -1,7 +1,10 @@
-import { createElement, DollarSign, Star, Clock } from 'lucide'
+import { createElement, DollarSign, Star, Clock, Undo2, Redo2 } from 'lucide'
 import type { GameState } from '../../../model/types/GameState'
 
 export class HudPanel {
+  onUndo: (() => void) | null = null
+  onRedo: (() => void) | null = null
+
   private el: HTMLElement | null = null
 
   mount(container: HTMLElement): void {
@@ -27,7 +30,7 @@ export class HudPanel {
     container.appendChild(div)
   }
 
-  update(gameState: GameState, traveltimeUsed: number): void {
+  update(gameState: GameState, traveltimeUsed: number, canUndo: boolean, canRedo: boolean): void {
     if (!this.el) return
     this.el.innerHTML = ''
 
@@ -36,6 +39,43 @@ export class HudPanel {
 
     left.appendChild(this.makeBadge(createElement(DollarSign, { width: 14, height: 14 }), String(gameState.money)))
     left.appendChild(this.makeBadge(createElement(Star, { width: 14, height: 14 }), String(gameState.stamps)))
+
+    const center = document.createElement('div')
+    Object.assign(center.style, { display: 'flex', alignItems: 'center', gap: '4px' })
+
+    const undoBtn = document.createElement('button')
+    undoBtn.title = 'Undo (Ctrl+Z)'
+    undoBtn.appendChild(createElement(Undo2, { width: 16, height: 16 }))
+    Object.assign(undoBtn.style, {
+      background: 'none',
+      border: 'none',
+      cursor: canUndo ? 'pointer' : 'default',
+      color: canUndo ? '#fff' : 'rgba(255,255,255,0.3)',
+      padding: '4px',
+      lineHeight: '0',
+      display: 'flex',
+      alignItems: 'center',
+    })
+    undoBtn.disabled = !canUndo
+    undoBtn.addEventListener('click', () => { this.onUndo?.() })
+    const redoBtn = document.createElement('button')
+    redoBtn.title = 'Redo (Ctrl+Y)'
+    redoBtn.appendChild(createElement(Redo2, { width: 16, height: 16 }))
+    Object.assign(redoBtn.style, {
+      background: 'none',
+      border: 'none',
+      cursor: canRedo ? 'pointer' : 'default',
+      color: canRedo ? '#fff' : 'rgba(255,255,255,0.3)',
+      padding: '4px',
+      lineHeight: '0',
+      display: 'flex',
+      alignItems: 'center',
+    })
+    redoBtn.disabled = !canRedo
+    redoBtn.addEventListener('click', () => { this.onRedo?.() })
+
+    center.appendChild(undoBtn)
+    center.appendChild(redoBtn)
 
     const right = document.createElement('div')
     Object.assign(right.style, { display: 'flex', alignItems: 'center', gap: '0.4rem' })
@@ -48,6 +88,7 @@ export class HudPanel {
     right.appendChild(ttText)
 
     this.el.appendChild(left)
+    this.el.appendChild(center)
     this.el.appendChild(right)
   }
 

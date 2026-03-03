@@ -1,11 +1,21 @@
-import type { StepAction } from '../../../model/types/StepAction'
-
-export interface StepEntry {
-  readonly stepLabel: string
-  readonly description: string
-  readonly stepIndex: number
-  readonly action: StepAction
+export interface JourneyStepEntry {
+  kind: 'JOURNEY'
+  stepIndex: number
+  vehicleId: number
+  stepLabel: string
+  description: string
 }
+
+export interface CargoStepEntry {
+  kind: 'CARGO'
+  stepIndex: number
+  actionIndex: number
+  stepLabel: string
+  description: string
+  valid: boolean
+}
+
+export type StepEntry = JourneyStepEntry | CargoStepEntry
 
 export interface VehicleInspection {
   readonly kind: 'VEHICLE'

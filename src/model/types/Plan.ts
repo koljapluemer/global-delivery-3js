@@ -1,20 +1,37 @@
 import type { Crate } from './Crate'
 import type { Vehicle } from './Vehicle'
 
-
-type TileKey = number // does nothing really, just for semantics (since tile keys are dynamically loaded from JSONL)
-type TileOccupantId = number
-type TileOccupant = ["CRATE" | "VEHICLE" , TileOccupantId] 
-
-export interface Timestep {
-    tileOccupations: Record<TileKey, TileOccupant>,
-    transportedCargo: Record<number, number> //  cargo crate id, vehicle id
+export interface InitialState {
+  vehiclePositions: Record<number, number>  // vehicleId → tileId
+  cratePositions: Record<number, number>    // crateId → tileId
 }
 
+export interface JourneyIntent {
+  vehicleId: number
+  toTileId: number
+}
+
+export interface JourneyStep {
+  kind: 'JOURNEY'
+  journeys: JourneyIntent[]  // at most one per vehicle
+}
+
+export type CargoIntent =
+  | { kind: 'LOAD';     crateId: number; vehicleId: number }
+  | { kind: 'UNLOAD';   crateId: number; vehicleId: number; toTileId: number }
+  | { kind: 'TRANSFER'; crateId: number; fromVehicleId: number; toVehicleId: number }
+  | { kind: 'DELIVER';  crateId: number; vehicleId: number; toTileId: number }
+
+export interface CargoStep {
+  kind: 'CARGO'
+  actions: CargoIntent[]
+}
+
+export type PlanStep = JourneyStep | CargoStep
 
 export interface Plan {
-  crates: Record<number, Crate>
   vehicles: Record<number, Vehicle>
-  steps: Timestep[]
+  crates: Record<number, Crate>
+  initialState: InitialState
+  steps: PlanStep[]
 }
-

@@ -3,9 +3,7 @@ import speechBubbleUrl from '../../assets/ui/speechbubble.png?url'
 import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
 import vehicleBubbleSvgRaw from '../../assets/ui/vehicle_bubble.svg?raw'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
-import type { Plan, Timestep } from '../../model/types/Plan'
-import type { Crate } from '../../model/types/Crate'
-import type { Vehicle } from '../../model/types/Vehicle'
+import type { Plan } from '../../model/types/Plan'
 import type { EntityTarget } from '../../model/types/EntityTarget'
 import type { RouteLeg } from '../../controller/traveltime'
 import { hsvColor } from './color_utils'
@@ -48,16 +46,6 @@ interface RouteLegLabelEntry {
 
 /**
  * Renders 2D speech-bubble labels for crates in screen space.
- *
- * Visibility rule:
- *   In front of horizon → bubble at projected world position, unrotated.
- *   Behind horizon      → bubble snapped to the horizon circle where the
- *                         (globe-centre → crate) ray meets it, rotated so
- *                         the tail points inward toward the globe.
- *   Near horizon        → smooth lerp between the two states.
- *
- * The speechbubble asset's pivot is its bottom-centre (the tail tip).
- * That point is always aligned to the crate's projected screen position.
  */
 export class LabelRenderer {
   private readonly camera: THREE.PerspectiveCamera
@@ -117,15 +105,14 @@ export class LabelRenderer {
     }
   }
 
-  /** Build label data from a timestep and push it to the label set. */
-  syncFromTimestep(timestep: Timestep, crates: Record<number, Crate>, tileApi: TileCentersApi): void {
+  /** Build crate label data from plan.initialState and push it to the label set. */
+  syncCrateLabels(plan: Plan, tileApi: TileCentersApi): void {
     const data: CrateLabelData[] = []
-    for (const [tileIdStr, occupant] of Object.entries(timestep.tileOccupations)) {
-      if (occupant[0] !== 'CRATE') continue
-      const id = occupant[1]
-      const crate = crates[id]
+    for (const [crateIdStr, tileId] of Object.entries(plan.initialState.cratePositions)) {
+      const id = Number(crateIdStr)
+      const crate = plan.crates[id]
       if (!crate) continue
-      const tile = tileApi.getTileById(Number(tileIdStr))
+      const tile = tileApi.getTileById(tileId)
       if (!tile) continue
       data.push({
         worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
@@ -139,7 +126,7 @@ export class LabelRenderer {
   }
 
   /** Sync vehicle bubble labels. Creates / updates / removes as needed. */
-  syncVehicleLabels(data: VehicleLabelData[]): void {
+  syncVehicleLabelsData(data: VehicleLabelData[]): void {
     const seen = new Set<number>()
     for (const item of data) {
       seen.add(item.entityId)
@@ -165,15 +152,14 @@ export class LabelRenderer {
     }
   }
 
-  /** Build vehicle label data from a timestep and push it to the vehicle label set. */
-  syncVehicleLabelsFromTimestep(timestep: Timestep, vehicles: Record<number, Vehicle>, tileApi: TileCentersApi): void {
+  /** Build vehicle label data from plan.initialState and push it to the vehicle label set. */
+  syncVehicleLabels(plan: Plan, tileApi: TileCentersApi): void {
     const data: VehicleLabelData[] = []
-    for (const [tileIdStr, occupant] of Object.entries(timestep.tileOccupations)) {
-      if (occupant[0] !== 'VEHICLE') continue
-      const id = occupant[1]
-      const vehicle = vehicles[id]
+    for (const [vehicleIdStr, tileId] of Object.entries(plan.initialState.vehiclePositions)) {
+      const id = Number(vehicleIdStr)
+      const vehicle = plan.vehicles[id]
       if (!vehicle) continue
-      const tile = tileApi.getTileById(Number(tileIdStr))
+      const tile = tileApi.getTileById(tileId)
       if (!tile) continue
       data.push({
         worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
@@ -182,36 +168,25 @@ export class LabelRenderer {
         entityId: id,
       })
     }
-    this.syncVehicleLabels(data)
+    this.syncVehicleLabelsData(data)
   }
 
-  /** Sync pin labels to the destination tiles of every vehicle movement in the plan. */
+  /** Sync pin labels to the destination tiles of every vehicle journey in the plan. */
   syncPinsFromPlan(plan: Plan, tileApi: TileCentersApi): void {
     const data: Array<{ worldPosition: THREE.Vector3; label: string; id: string; vehicleId: number }> = []
 
-    for (let i = 1; i < plan.steps.length; i++) {
-      const prevStep = plan.steps[i - 1]
-      const currStep = plan.steps[i]
-
-      const prevTileByVehicleId = new Map<number, number>()
-      for (const [tileIdStr, occupant] of Object.entries(prevStep.tileOccupations)) {
-        if (occupant[0] === 'VEHICLE') {
-          prevTileByVehicleId.set(occupant[1], Number(tileIdStr))
-        }
-      }
-
-      for (const [tileIdStr, occupant] of Object.entries(currStep.tileOccupations)) {
-        if (occupant[0] !== 'VEHICLE') continue
-        const tileId = Number(tileIdStr)
-        const id = occupant[1]
-        if (prevTileByVehicleId.get(id) === tileId) continue
-        const tile = tileApi.getTileById(tileId)
+    for (let i = 0; i < plan.steps.length; i++) {
+      const step = plan.steps[i]
+      if (step.kind !== 'JOURNEY') continue
+      for (const journey of step.journeys) {
+        const { vehicleId, toTileId } = journey
+        const tile = tileApi.getTileById(toTileId)
         if (!tile) continue
         data.push({
           worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
           label: `#${i}`,
-          id: `${id}-${i}`,
-          vehicleId: id,
+          id: `${vehicleId}-${i}`,
+          vehicleId,
         })
       }
     }
@@ -361,7 +336,6 @@ export class LabelRenderer {
     const dataUrl = `data:image/svg+xml,${encodeURIComponent(coloredSvg)}`
 
     const el = document.createElement('div')
-    // SVG viewBox aspect ratio is 1129:608 ≈ 1.856; tail tip is at ~93% height, ~50% width
     Object.assign(el.style, {
       position: 'absolute',
       width: '120px',
@@ -450,14 +424,6 @@ export class LabelRenderer {
     return el
   }
 
-  /**
-   * Compute final 2D position and rotation for one label, then apply to the DOM element.
-   *
-   * The element is positioned with its bottom-centre at the target screen point:
-   *   transform-origin: 50% 100%
-   *   transform: translateX(-50%) translateY(-100%) rotate(angle)
-   * So the tail tip stays pinned and rotation sweeps the bubble around that point.
-   */
   private updateLabel(entry: LabelEntry, delta: number): void {
     const screen = this.worldToScreen(entry.worldPos)
     const blend = this.getHorizonBlend(entry.worldPos)
@@ -482,7 +448,6 @@ export class LabelRenderer {
       }
     }
 
-    // Exponential-decay smooth rotation (ported from Godot lerp_angle)
     entry.smoothRot = lerpAngle(
       entry.smoothRot,
       targetRot,
@@ -495,11 +460,9 @@ export class LabelRenderer {
     el.style.transformOrigin = '50% 100%'
     el.style.transform = `translateX(-50%) translateY(-100%) rotate(${smoothRot}rad)`
 
-    // Keep inner text upright when the bubble is rotated past ±90°
     textEl.style.transform = Math.cos(smoothRot) < 0 ? 'rotate(180deg)' : ''
   }
 
-  /** Position a pin label at its projected screen point, hidden when behind the horizon. */
   private updatePinLabel(entry: LabelEntry, id: string): void {
     const blend = this.getHorizonBlend(entry.worldPos)
     entry.el.style.opacity = blend >= 1 ? '0' : String(1 - blend)
@@ -515,7 +478,6 @@ export class LabelRenderer {
       : 'translateX(-50%) translateY(-100%)'
   }
 
-  /** Position a route leg chip label at its projected screen point, fading behind horizon. */
   private updateRouteLegLabel(entry: RouteLegLabelEntry): void {
     const blend = this.getHorizonBlend(entry.worldPos)
     const baseOpacity = blend >= 1 ? 0 : entry.opacity * (1 - blend)
@@ -528,7 +490,6 @@ export class LabelRenderer {
     entry.el.style.transform = 'translateX(-50%) translateY(-50%)'
   }
 
-  /** Project a world position to pixel coordinates. Rounded to suppress subpixel jitter. */
   private worldToScreen(pos: THREE.Vector3): { x: number; y: number } {
     const ndc = pos.clone().project(this.camera)
     return {
@@ -537,25 +498,16 @@ export class LabelRenderer {
     }
   }
 
-  /**
-   * Returns 0 when anchor is clearly in front of the horizon, 1 when clearly behind.
-   * Port of Godot's _get_horizon_blend().
-   */
   private getHorizonBlend(anchor: THREE.Vector3): number {
     const C = this.globeCenter
     const O = this.camera.position
     const R = this.globeRadius
-    // signed > 0  →  in front; signed < 0  →  behind
     const signed = anchor.clone().sub(C).dot(O.clone().sub(C)) - R * R
     const zone = R * C.distanceTo(O) * HORIZON_BLEND_EPSILON
     if (zone < 1e-4) return signed >= 0 ? 0 : 1
     return smoothstep(zone, -zone, signed)
   }
 
-  /**
-   * Screen-space horizon circle { center, radius }.
-   * Port of Godot's _get_horizon_circle().
-   */
   private getHorizonCircle(): { center: THREE.Vector2; radius: number } {
     const C = this.globeCenter
     const O = this.camera.position
@@ -566,10 +518,8 @@ export class LabelRenderer {
       const c = this.worldToScreen(C)
       return { center: new THREE.Vector2(c.x, c.y), radius: 1 }
     }
-    // 3-D horizon circle centre and radius
     const C_h = C.clone().sub(CO.clone().multiplyScalar(R * R / distSq))
     const r_h = R * Math.sqrt(1 - (R * R) / distSq)
-    // Sample a point on the horizon circle to get the screen-space radius
     const CONorm = CO.clone().normalize()
     let perp = new THREE.Vector3().crossVectors(CONorm, new THREE.Vector3(0, 1, 0))
     if (perp.lengthSq() < 0.01) {
@@ -584,11 +534,6 @@ export class LabelRenderer {
     return { center, radius }
   }
 
-  /**
-   * Returns the point where the ray from `origin` through `target` intersects
-   * the screen-space horizon circle.
-   * Port of Godot's _horizon_intersection().
-   */
   private horizonIntersection(origin: THREE.Vector2, target: THREE.Vector2): THREE.Vector2 {
     const { center: c, radius: r } = this.getHorizonCircle()
     const dir = target.clone().sub(origin)
@@ -623,7 +568,6 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t)
 }
 
-/** Lerp between two angles taking the shortest path. */
 function lerpAngle(a: number, b: number, t: number): number {
   let d = b - a
   while (d > Math.PI) d -= 2 * Math.PI

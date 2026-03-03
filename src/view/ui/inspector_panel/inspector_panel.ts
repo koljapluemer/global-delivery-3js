@@ -1,16 +1,18 @@
 import { createElement, Trash2 } from 'lucide'
 import type { Plan } from '../../../model/types/Plan'
+import type { DerivedPlanState } from '../../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
 import type { EntityTarget } from '../../../model/types/EntityTarget'
 import type { InspectionContent, StepEntry } from './types'
-import type { StepAction } from '../../../model/types/StepAction'
 import { inspectEntity } from './entity_inspector'
 
 export class InspectorPanel {
   /** Called when the user clicks "Add Pin to Route" for a vehicle. */
   onAddPin: ((vehicleId: number) => void) | null = null
-  /** Called when the user removes an individual action from a step. */
-  onRemoveAction: ((stepIndex: number, action: StepAction) => void) | null = null
+  /** Called when the user removes a journey intent from a step. */
+  onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
+  /** Called when the user removes a cargo intent from a step. */
+  onRemoveCargoIntent: ((stepIndex: number, actionIndex: number) => void) | null = null
 
   private aside: HTMLElement | null = null
   private body: HTMLElement | null = null
@@ -45,18 +47,18 @@ export class InspectorPanel {
     container.appendChild(aside)
   }
 
-  show(target: EntityTarget, plan: Plan, tileApi: TileCentersApi): void {
+  show(target: EntityTarget, plan: Plan, derived: DerivedPlanState, tileApi: TileCentersApi): void {
     if (!this.aside || !this.body) return
     this.currentTarget = target
-    const content = inspectEntity(target, plan, tileApi)
+    const content = inspectEntity(target, plan, derived, tileApi)
     this.body.innerHTML = ''
     this.renderContent(content, target, this.body)
     this.aside.style.display = 'block'
   }
 
   /** Re-render the panel for the currently-shown entity, if one is visible. */
-  refresh(plan: Plan, tileApi: TileCentersApi): void {
-    if (this.currentTarget) this.show(this.currentTarget, plan, tileApi)
+  refresh(plan: Plan, derived: DerivedPlanState, tileApi: TileCentersApi): void {
+    if (this.currentTarget) this.show(this.currentTarget, plan, derived, tileApi)
   }
 
   hide(): void {
@@ -128,6 +130,12 @@ export class InspectorPanel {
       b.textContent = entry.stepLabel + ' '
       text.appendChild(b)
       text.appendChild(document.createTextNode(entry.description))
+      if (entry.kind === 'CARGO' && !entry.valid) {
+        const warn = document.createElement('span')
+        warn.textContent = ' ⚠'
+        Object.assign(warn.style, { color: '#ff8888' })
+        text.appendChild(warn)
+      }
 
       const removeBtn = document.createElement('button')
       removeBtn.title = 'Remove step'
@@ -141,7 +149,13 @@ export class InspectorPanel {
         lineHeight: '0',
       })
       removeBtn.appendChild(createElement(Trash2, { width: 13, height: 13 }))
-      removeBtn.addEventListener('click', () => { this.onRemoveAction?.(entry.stepIndex, entry.action) })
+      removeBtn.addEventListener('click', () => {
+        if (entry.kind === 'JOURNEY') {
+          this.onRemoveJourneyIntent?.(entry.stepIndex, entry.vehicleId)
+        } else {
+          this.onRemoveCargoIntent?.(entry.stepIndex, entry.actionIndex)
+        }
+      })
 
       li.appendChild(text)
       li.appendChild(removeBtn)

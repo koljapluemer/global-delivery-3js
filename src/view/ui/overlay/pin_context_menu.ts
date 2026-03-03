@@ -1,11 +1,12 @@
 import { createElement, Trash2 } from 'lucide'
 import type { Plan } from '../../../model/types/Plan'
+import type { DerivedPlanState } from '../../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
 import { hsvColor } from '../../game/color_utils'
 
 export interface PinMenuCallbacks {
   onUnload: (crateId: number) => void
-  onRemoveUnload: (crateId: number) => void
+  onRemoveUnload: (stepIndex: number, actionIndex: number) => void
   onClose: () => void
 }
 
@@ -38,6 +39,7 @@ export class PinContextMenu {
     vehicleId: number,
     stepIndex: number,
     plan: Plan,
+    derived: DerivedPlanState,
     _tileApi: TileCentersApi,
     screenX: number,
     screenY: number,
@@ -49,35 +51,37 @@ export class PinContextMenu {
 
     const vehicle = plan.vehicles[vehicleId]
     if (!vehicle) return
-    const currStep = plan.steps[stepIndex]
-    const prevStep = plan.steps[stepIndex - 1]
-    if (!currStep) return
 
     const colorStyle = hsvColor(vehicle.hue).getStyle()
 
-    // Build cargo-on-board list: crates in currStep.transportedCargo for this vehicle
-    const onBoard: Array<{ crateId: number; label: string }> = []
-    for (const [crateIdStr, vId] of Object.entries(currStep.transportedCargo)) {
-      if (vId !== vehicleId) continue
-      const crateId = Number(crateIdStr)
-      const crate = plan.crates[crateId]
-      onBoard.push({ crateId, label: crate?.destinationCountry ?? `Crate #${crateId}` })
-    }
+    // Cargo on board: from the snapshot at this journey step
+    const snapshot = derived.stepSnapshots[stepIndex]
+    const onBoardIds = snapshot ? [...(snapshot.vehicleCargo.get(vehicleId) ?? [])] : []
+    const onBoard: Array<{ crateId: number; label: string }> = onBoardIds.map((crateId) => ({
+      crateId,
+      label: plan.crates[crateId]?.destinationCountry ?? `Crate #${crateId}`,
+    }))
 
-    // Build dropped-off-here list: crates that were in prevStep.transportedCargo for this vehicle
-    // and are now in currStep.tileOccupations (on the ground)
-    const droppedOff: Array<{ crateId: number; label: string }> = []
-    if (prevStep) {
-      for (const [crateIdStr, vId] of Object.entries(prevStep.transportedCargo)) {
-        if (vId !== vehicleId) continue
-        if (crateIdStr in currStep.transportedCargo) continue // still carried
-        const crateId = Number(crateIdStr)
-        const onGround = Object.values(currStep.tileOccupations).some(
-          ([kind, id]) => kind === 'CRATE' && id === crateId,
-        )
-        if (!onGround) continue
-        const crate = plan.crates[crateId]
-        droppedOff.push({ crateId, label: crate?.destinationCountry ?? `Crate #${crateId}` })
+    // Dropped off via UNLOAD/DELIVER in the CARGO step following this journey step
+    const droppedOff: Array<{ crateId: number; label: string; cargoStepIndex: number; actionIndex: number }> = []
+    const nextStepIndex = stepIndex + 1
+    if (nextStepIndex < plan.steps.length && plan.steps[nextStepIndex].kind === 'CARGO') {
+      const cargoStep = derived.steps.find(
+        (s) => s.kind === 'CARGO' && s.stepIndex === nextStepIndex,
+      )
+      if (cargoStep && cargoStep.kind === 'CARGO') {
+        for (let ai = 0; ai < cargoStep.actions.length; ai++) {
+          const { intent, valid } = cargoStep.actions[ai]
+          if (!valid) continue
+          if ((intent.kind === 'UNLOAD' || intent.kind === 'DELIVER') && intent.vehicleId === vehicleId) {
+            droppedOff.push({
+              crateId: intent.crateId,
+              label: plan.crates[intent.crateId]?.destinationCountry ?? `Crate #${intent.crateId}`,
+              cargoStepIndex: nextStepIndex,
+              actionIndex: ai,
+            })
+          }
+        }
       }
     }
 
@@ -107,8 +111,8 @@ export class PinContextMenu {
       el.appendChild(this.buildOnBoardRow(crateId, label, colorStyle, callbacks))
     }
 
-    for (const { crateId, label } of droppedOff) {
-      el.appendChild(this.buildDroppedOffRow(crateId, label, colorStyle, callbacks))
+    for (const { crateId, label, cargoStepIndex, actionIndex } of droppedOff) {
+      el.appendChild(this.buildDroppedOffRow(crateId, label, colorStyle, cargoStepIndex, actionIndex, callbacks))
     }
 
     // Position: grows upward from the click point
@@ -117,7 +121,6 @@ export class PinContextMenu {
     el.style.bottom = `${window.innerHeight - screenY}px`
     el.style.transform = 'translateX(-50%)'
 
-    // Outside-click closes the menu after a tick (so this click doesn't immediately close it)
     setTimeout(() => {
       const handler = (ev: MouseEvent) => {
         if (!el.contains(ev.target as Node)) {
@@ -186,9 +189,11 @@ export class PinContextMenu {
   }
 
   private buildDroppedOffRow(
-    crateId: number,
+    _crateId: number,
     label: string,
     colorStyle: string,
+    cargoStepIndex: number,
+    actionIndex: number,
     callbacks: PinMenuCallbacks,
   ): HTMLElement {
     const row = document.createElement('div')
@@ -222,7 +227,7 @@ export class PinContextMenu {
     btn.addEventListener('mousedown', (e) => { e.stopPropagation() })
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      callbacks.onRemoveUnload(crateId)
+      callbacks.onRemoveUnload(cargoStepIndex, actionIndex)
     })
     row.appendChild(btn)
     return row
