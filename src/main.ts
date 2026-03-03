@@ -6,11 +6,12 @@ import { setupLogHoveredTile } from './view/debug/log_hovered_tile'
 import { TileCentersApi } from './controller/layer_0/tile_centers_api'
 import { GameItemStateManager } from './controller/layer_1/game_item_state_manager'
 import { NavApi } from './controller/navigation'
-import { DEMO_PLAN } from './model/db/demo_plan'
+import { generateWorld } from './model/world_generator'
 import { GameItemRenderer } from './view/game/game_item_renderer'
 import { LabelRenderer } from './view/game/label_renderer'
 import { PlanPanel } from './view/ui/plan_panel/plan_panel'
 import { InspectorPanel } from './view/ui/inspector_panel/inspector_panel'
+import { HudPanel } from './view/ui/hud_panel/hud_panel'
 import { InputModeController } from './controller/input_mode/input_mode'
 import { PinPlacementPreview } from './view/game/pin_placement_preview'
 import { CrateDropPreview } from './view/game/crate_drop_preview'
@@ -19,8 +20,10 @@ import { CancelButton } from './view/ui/overlay/cancel_button'
 import { PinContextMenu } from './view/ui/overlay/pin_context_menu'
 import { CrateLoadMenu } from './view/ui/overlay/crate_load_menu'
 import { hsvColor } from './view/game/color_utils'
+import { deriveRouteLegs, deriveTotalTraveltimeUsed } from './controller/traveltime'
 import type { TileCenter } from './controller/layer_0/tile_centers_api'
 import type { StepAction } from './model/types/StepAction'
+import type { GameState } from './model/types/GameState'
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
@@ -30,15 +33,22 @@ const globeScene = new GlobeScene()
 const mainCamera = new MainCamera(renderer.domElement)
 const tileCentersApi = new TileCentersApi()
 const navApi = new NavApi()
-const stateManager = new GameItemStateManager(DEMO_PLAN, navApi)
-const gameItemRenderer = new GameItemRenderer(globeScene.scene, navApi, renderer)
-const inputModeController = new InputModeController()
-const cancelButton = new CancelButton()
 
 tileCentersApi.load()
 navApi.load()
 
-const planPanel = new PlanPanel(stateManager.getPlan(), tileCentersApi)
+const initialPlan = generateWorld(tileCentersApi, navApi)
+const stateManager = new GameItemStateManager(initialPlan, navApi)
+const gameItemRenderer = new GameItemRenderer(globeScene.scene, navApi, renderer)
+const inputModeController = new InputModeController()
+const cancelButton = new CancelButton()
+
+const gameState: GameState = { money: 0, stamps: 0, traveltimeBudget: 1000 }
+
+const hudPanel = new HudPanel()
+hudPanel.mount(document.body)
+
+const planPanel = new PlanPanel(stateManager.getPlan(), tileCentersApi, navApi)
 planPanel.mount(document.body)
 
 const inspectorPanel = new InspectorPanel()
@@ -73,10 +83,14 @@ function ndcFromEvent(e: MouseEvent, canvas: HTMLCanvasElement): THREE.Vector2 {
 // ---------------------------------------------------------------------------
 async function rerender(): Promise<void> {
   const plan = stateManager.getPlan()
+  const routeLegs = deriveRouteLegs(plan, navApi)
+  const traveltimeUsed = deriveTotalTraveltimeUsed(plan, navApi)
   gameItemRenderer.dispose()
   await gameItemRenderer.render(stateManager, tileCentersApi, globeCenter)
   labelRenderer?.syncFromTimestep(plan.steps[0], plan.crates, tileCentersApi)
   labelRenderer?.syncPinsFromPlan(plan, tileCentersApi)
+  labelRenderer?.syncRouteLegLabels(routeLegs, tileCentersApi)
+  hudPanel.update(gameState, traveltimeUsed)
   planPanel.update()
 }
 
@@ -410,8 +424,12 @@ globeScene.load().then(({ boundingSphere }) => {
     inspectorPanel.show(target, stateManager.getPlan(), tileCentersApi)
   }
   const plan = stateManager.getPlan()
+  const routeLegs = deriveRouteLegs(plan, navApi)
+  const traveltimeUsed = deriveTotalTraveltimeUsed(plan, navApi)
   labelRenderer.syncFromTimestep(plan.steps[0], plan.crates, tileCentersApi)
   labelRenderer.syncPinsFromPlan(plan, tileCentersApi)
+  labelRenderer.syncRouteLegLabels(routeLegs, tileCentersApi)
+  hudPanel.update(gameState, traveltimeUsed)
 })
 
 // ---------------------------------------------------------------------------

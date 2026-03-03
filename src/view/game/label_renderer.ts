@@ -5,6 +5,7 @@ import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { Plan, Timestep } from '../../model/types/Plan'
 import type { Crate } from '../../model/types/Crate'
 import type { EntityTarget } from '../../model/types/EntityTarget'
+import type { RouteLeg } from '../../controller/traveltime'
 
 /** Width of the horizon blend zone (fraction of R·|O−C|). ~6–8° of arc. */
 const HORIZON_BLEND_EPSILON = 0.1
@@ -16,6 +17,8 @@ const ROTATION_SMOOTH_SPEED = 10.0
 interface CrateLabelData {
   worldPosition: THREE.Vector3
   destinationCountry: string
+  rewardMoney: number
+  rewardStamps: number
   entityId: number
 }
 
@@ -25,6 +28,12 @@ interface LabelEntry {
   worldPos: THREE.Vector3
   smoothRot: number
   id?: string
+}
+
+interface RouteLegLabelEntry {
+  el: HTMLDivElement
+  worldPos: THREE.Vector3
+  opacity: number
 }
 
 /**
@@ -49,6 +58,7 @@ export class LabelRenderer {
   private labels = new Map<number, LabelEntry>()
   private pinLabels = new Map<string, LabelEntry>()
   private pinLabelOffsets = new Map<string, number>()
+  private routeLegLabels = new Map<string, RouteLegLabelEntry>()
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -74,7 +84,7 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.entityId)
       if (!this.labels.has(item.entityId)) {
-        const { el, textEl } = this.createBubble(item.destinationCountry, item.entityId)
+        const { el, textEl } = this.createBubble(item.destinationCountry, item.rewardMoney, item.rewardStamps, item.entityId)
         this.container.appendChild(el)
         this.labels.set(item.entityId, {
           el,
@@ -109,6 +119,8 @@ export class LabelRenderer {
       data.push({
         worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
         destinationCountry: crate.destinationCountry,
+        rewardMoney: crate.rewardMoney,
+        rewardStamps: crate.rewardStamps,
         entityId: id,
       })
     }
@@ -166,6 +178,41 @@ export class LabelRenderer {
     }
   }
 
+  /** Sync traveltime chip labels for all route legs. */
+  syncRouteLegLabels(legs: RouteLeg[], tileApi: TileCentersApi): void {
+    const seen = new Set<string>()
+    for (const leg of legs) {
+      const key = `${leg.vehicleId}-${leg.stepIndex}`
+      seen.add(key)
+
+      const midTileId = leg.pathTileIds[Math.floor(leg.pathTileIds.length / 2)]
+      const tile = tileApi.getTileById(midTileId)
+      if (!tile) continue
+
+      const worldPos = new THREE.Vector3(tile.x, tile.z, -tile.y)
+      const opacity = leg.isCounted ? 1 : 0.35
+
+      if (!this.routeLegLabels.has(key)) {
+        const el = this.createRouteLegChip(leg.traveltime)
+        this.container.appendChild(el)
+        this.routeLegLabels.set(key, { el, worldPos, opacity })
+      } else {
+        const entry = this.routeLegLabels.get(key)!
+        entry.worldPos.copy(worldPos)
+        entry.opacity = opacity
+        entry.el.style.opacity = String(opacity)
+        const span = entry.el.querySelector('span')
+        if (span) span.textContent = `⏱ ${leg.traveltime}`
+      }
+    }
+    for (const [key, entry] of this.routeLegLabels) {
+      if (!seen.has(key)) {
+        entry.el.remove()
+        this.routeLegLabels.delete(key)
+      }
+    }
+  }
+
   /** Animate a pin label upward by offsetPx when a context menu is open (0 to reset). */
   setPinLabelOffset(vehicleId: number, stepIndex: number, offsetPx: number): void {
     const key = `${vehicleId}-${stepIndex}`
@@ -181,32 +228,37 @@ export class LabelRenderer {
     for (const [id, entry] of this.pinLabels) {
       this.updatePinLabel(entry, id)
     }
+    for (const entry of this.routeLegLabels.values()) {
+      this.updateRouteLegLabel(entry)
+    }
   }
 
   dispose(): void {
     this.container.remove()
     this.labels.clear()
     this.pinLabels.clear()
+    this.routeLegLabels.clear()
   }
 
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private createBubble(destination: string, entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createBubble(destination: string, rewardMoney: number, rewardStamps: number, entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',
       width: '100px',
-      height: '60px',
+      height: '68px',
       backgroundImage: `url(${speechBubbleUrl})`,
       backgroundSize: '100% 100%',
       backgroundRepeat: 'no-repeat',
       display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      // Reserve vertical space for the tail at the bottom
       paddingBottom: '14px',
+      gap: '2px',
       pointerEvents: 'auto',
       cursor: 'pointer',
     })
@@ -224,7 +276,18 @@ export class LabelRenderer {
       textAlign: 'center',
       lineHeight: '1.2',
     })
+
+    const rewardEl = document.createElement('span')
+    rewardEl.textContent = `$${rewardMoney}  ★${rewardStamps}`
+    Object.assign(rewardEl.style, {
+      fontSize: '8px',
+      color: '#444',
+      textAlign: 'center',
+      lineHeight: '1',
+    })
+
     el.appendChild(textEl)
+    el.appendChild(rewardEl)
     return { el, textEl }
   }
 
@@ -259,6 +322,27 @@ export class LabelRenderer {
     })
     el.appendChild(textEl)
     return { el, textEl }
+  }
+
+  private createRouteLegChip(traveltime: number): HTMLDivElement {
+    const el = document.createElement('div')
+    Object.assign(el.style, {
+      position: 'absolute',
+      background: 'rgba(20,20,28,0.85)',
+      border: '1px solid rgba(255,255,255,0.18)',
+      borderRadius: '10px',
+      padding: '2px 7px',
+      pointerEvents: 'none',
+      whiteSpace: 'nowrap',
+    })
+    const span = document.createElement('span')
+    span.textContent = `⏱ ${traveltime}`
+    Object.assign(span.style, {
+      fontSize: '10px',
+      color: '#e0e0e0',
+    })
+    el.appendChild(span)
+    return el
   }
 
   /**
@@ -324,6 +408,19 @@ export class LabelRenderer {
     entry.el.style.transform = offset > 0
       ? `translateX(-50%) translateY(calc(-100% - ${offset}px))`
       : 'translateX(-50%) translateY(-100%)'
+  }
+
+  /** Position a route leg chip label at its projected screen point, fading behind horizon. */
+  private updateRouteLegLabel(entry: RouteLegLabelEntry): void {
+    const blend = this.getHorizonBlend(entry.worldPos)
+    const baseOpacity = blend >= 1 ? 0 : entry.opacity * (1 - blend)
+    entry.el.style.opacity = String(baseOpacity)
+    if (blend >= 1) return
+
+    const screen = this.worldToScreen(entry.worldPos)
+    entry.el.style.left = `${screen.x}px`
+    entry.el.style.top = `${screen.y}px`
+    entry.el.style.transform = 'translateX(-50%) translateY(-50%)'
   }
 
   /** Project a world position to pixel coordinates. Rounded to suppress subpixel jitter. */

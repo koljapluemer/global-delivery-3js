@@ -21,8 +21,8 @@ export class InspectorPanel {
     Object.assign(aside.style, {
       position: 'fixed',
       right: '0',
-      top: '0',
-      height: '100%',
+      top: '48px',
+      height: 'calc(100% - 48px)',
       overflowY: 'auto',
       padding: '1rem',
       background: 'rgba(0,0,0,0.6)',
@@ -88,6 +88,8 @@ export class InspectorPanel {
       addRow('Destination', content.destinationCountry)
       const locText = content.locationNote ?? content.location ?? 'open sea'
       addRow('Location', locText)
+      addRow('Reward Money', `$${content.rewardMoney}`)
+      addRow('Reward Stamps', `★${content.rewardStamps}`)
     }
 
     container.appendChild(dl)

@@ -17,6 +17,8 @@ export interface VehicleInspection {
 export interface CrateInspection {
   readonly kind: 'CRATE'
   readonly destinationCountry: string
+  readonly rewardMoney: number
+  readonly rewardStamps: number
   readonly location: string | null
   readonly locationNote: string | null
   readonly stepEntries: readonly StepEntry[]

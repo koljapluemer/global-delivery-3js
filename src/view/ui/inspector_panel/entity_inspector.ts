@@ -123,7 +123,15 @@ function inspectCrate(id: number, plan: Plan, tileApi: TileCentersApi): CrateIns
     }
   }
 
-  return { kind: 'CRATE', destinationCountry: crate.destinationCountry, location, locationNote, stepEntries }
+  return {
+    kind: 'CRATE',
+    destinationCountry: crate.destinationCountry,
+    rewardMoney: crate.rewardMoney,
+    rewardStamps: crate.rewardStamps,
+    location,
+    locationNote,
+    stepEntries,
+  }
 }
 
 export function inspectEntity(target: EntityTarget, plan: Plan, tileApi: TileCentersApi): InspectionContent {

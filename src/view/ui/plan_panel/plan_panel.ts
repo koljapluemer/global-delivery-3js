@@ -1,9 +1,11 @@
 import { createElement, Trash2 } from 'lucide'
 import type { Plan } from '../../../model/types/Plan'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
+import type { NavApi } from '../../../controller/navigation'
 import type { StepAction } from '../../../model/types/StepAction'
 import type { PlanEvent, StepSummary } from './types'
 import { derivePlanSummary } from './plan_event_deriver'
+import { deriveRouteLegs } from '../../../controller/traveltime'
 
 export class PlanPanel {
   /** Called when the user removes an individual action from a step. */
@@ -11,11 +13,13 @@ export class PlanPanel {
 
   private readonly plan: Plan
   private readonly tileApi: TileCentersApi
+  private readonly navApi: NavApi
   private aside: HTMLElement | null = null
 
-  constructor(plan: Plan, tileApi: TileCentersApi) {
+  constructor(plan: Plan, tileApi: TileCentersApi, navApi: NavApi) {
     this.plan = plan
     this.tileApi = tileApi
+    this.navApi = navApi
   }
 
   mount(container: HTMLElement): void {
@@ -23,8 +27,8 @@ export class PlanPanel {
     Object.assign(aside.style, {
       position: 'fixed',
       left: '0',
-      top: '0',
-      height: '100%',
+      top: '48px',
+      height: 'calc(100% - 48px)',
       overflowY: 'auto',
       padding: '1rem',
       background: 'rgba(0,0,0,0.6)',
@@ -43,17 +47,37 @@ export class PlanPanel {
     if (!this.aside) return
     this.aside.innerHTML = ''
     const summaries = derivePlanSummary(this.plan, this.tileApi)
+    const legs = deriveRouteLegs(this.plan, this.navApi)
+    const maxTraveltimeByStep = new Map<number, number>()
+    for (const leg of legs) {
+      if (leg.isCounted) {
+        maxTraveltimeByStep.set(leg.stepIndex, leg.traveltime)
+      }
+    }
     for (const summary of summaries) {
-      this.aside.appendChild(this.buildStepSection(summary))
+      const tt = maxTraveltimeByStep.get(summary.stepIndex) ?? 0
+      this.aside.appendChild(this.buildStepSection(summary, tt))
     }
   }
 
-  private buildStepSection(summary: StepSummary): HTMLElement {
+  private buildStepSection(summary: StepSummary, maxTraveltime: number): HTMLElement {
     const section = document.createElement('section')
     Object.assign(section.style, { marginBottom: '0.75rem' })
 
     const heading = document.createElement('h2')
-    heading.textContent = summary.label
+    Object.assign(heading.style, { display: 'flex', alignItems: 'center', gap: '0.5rem' })
+
+    const labelSpan = document.createElement('span')
+    labelSpan.textContent = summary.label
+    heading.appendChild(labelSpan)
+
+    if (maxTraveltime > 0) {
+      const ttSpan = document.createElement('span')
+      ttSpan.textContent = `⏱ ${maxTraveltime}`
+      Object.assign(ttSpan.style, { fontSize: '11px', fontWeight: 'normal', opacity: '0.75' })
+      heading.appendChild(ttSpan)
+    }
+
     section.appendChild(heading)
 
     if (summary.events.length > 0) {
