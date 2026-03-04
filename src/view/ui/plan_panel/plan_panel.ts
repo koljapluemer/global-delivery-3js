@@ -1,16 +1,32 @@
 import { createElement, Trash2 } from 'lucide'
+import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import type { Plan, CargoIntent } from '../../../model/types/Plan'
 import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep, DerivedCargoAction } from '../../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
+
+const DROP_ZONE_STYLE: Record<string, string> = {
+  minHeight: '24px',
+  borderRadius: '6px',
+  margin: '4px 0',
+  border: '1px dashed rgba(255,255,255,0.35)',
+  transition: 'background 0.15s, border-color 0.15s',
+  boxSizing: 'border-box',
+}
 
 export class PlanPanel {
   onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
   onRemoveCargoIntent: ((stepIndex: number) => void) | null = null
   onMoveJourneyIntent: ((vehicleId: number, fromStepIndex: number, toStepIndex: number | 'before-all' | 'after-all') => void) | null = null
+  onMoveJourneyIntentIntoStep: ((vehicleId: number, fromStepIndex: number, toStepIndex: number) => void) | null = null
   onMoveCargoStep: ((fromStepIndex: number, toAfterStepIndex: number) => void) | null = null
 
   private aside: HTMLElement | null = null
   private tileApi: TileCentersApi | null = null
+  private draggableCleanups: Array<() => void> = []
+  private dropTargetCleanups: Array<() => void> = []
+  private monitorCleanup: (() => void) | null = null
+  private currentPlan: Plan | null = null
+  private currentDerived: DerivedPlanState | null = null
 
   mount(container: HTMLElement, tileApi: TileCentersApi): void {
     const aside = document.createElement('aside')
@@ -30,10 +46,36 @@ export class PlanPanel {
     this.aside = aside
     this.tileApi = tileApi
     container.appendChild(aside)
+
+    this.monitorCleanup = monitorForElements({
+      onDragStart: ({ source }) => {
+        const data = source.data as { type: string; vehicleId?: number; fromStepIndex?: number }
+        if (data.type === 'journey' && data.vehicleId !== undefined && data.fromStepIndex !== undefined) {
+          this.showDropTargets('journey', data.vehicleId, data.fromStepIndex)
+        } else if (data.type === 'cargo' && data.fromStepIndex !== undefined) {
+          this.showDropTargets('cargo', undefined, data.fromStepIndex)
+        }
+      },
+      onDrop: () => this.hideDropTargets(),
+    })
+  }
+
+  unmount(): void {
+    this.hideDropTargets()
+    this.monitorCleanup?.()
+    this.monitorCleanup = null
+    this.aside = null
+    this.tileApi = null
   }
 
   update(plan: Plan, derived: DerivedPlanState): void {
     if (!this.aside || !this.tileApi) return
+    this.currentPlan = plan
+    this.currentDerived = derived
+
+    for (const c of this.draggableCleanups) c()
+    this.draggableCleanups = []
+
     this.aside.innerHTML = ''
 
     if (derived.steps.length === 0) {
@@ -44,9 +86,6 @@ export class PlanPanel {
       return
     }
 
-    // Before-all journey drop zone
-    this.aside.appendChild(this.createJourneyDropZone('before-all'))
-
     for (const step of derived.steps) {
       if (step.kind === 'JOURNEY') {
         this.aside.appendChild(this.buildJourneySection(step as DerivedJourneyStep, plan))
@@ -56,16 +95,153 @@ export class PlanPanel {
       }
     }
 
-    // After-all journey drop zone
-    this.aside.appendChild(this.createJourneyDropZone('after-all'))
+    this.registerDraggables()
   }
 
-  // ---------------------------------------------------------------------------
-  // Private — section builders
-  // ---------------------------------------------------------------------------
+  private registerDraggables(): void {
+    if (!this.aside || !this.currentPlan || !this.currentDerived) return
+    const journeyCards = this.aside.querySelectorAll<HTMLElement>('[data-draggable="journey"]')
+    const cargoCards = this.aside.querySelectorAll<HTMLElement>('[data-draggable="cargo"]')
+    journeyCards.forEach((el) => {
+      const vehicleId = Number(el.dataset.vehicleId)
+      const fromStepIndex = Number(el.dataset.stepIndex)
+      const cleanup = draggable({
+        element: el,
+        getInitialData: () => ({ type: 'journey', vehicleId, fromStepIndex }),
+      })
+      this.draggableCleanups.push(cleanup)
+    })
+    cargoCards.forEach((el) => {
+      const fromStepIndex = Number(el.dataset.stepIndex)
+      const cleanup = draggable({
+        element: el,
+        getInitialData: () => ({ type: 'cargo', fromStepIndex }),
+      })
+      this.draggableCleanups.push(cleanup)
+    })
+  }
+
+  private showDropTargets(
+    dragType: 'journey' | 'cargo',
+    vehicleId?: number,
+    _fromStepIndex?: number,
+  ): void {
+    if (!this.aside || !this.currentPlan || !this.currentDerived) return
+    const sections = this.aside.querySelectorAll<HTMLElement>('[data-step-index]')
+    const steps = this.currentDerived.steps
+    const cleanups: Array<() => void> = []
+
+    const createGhostZone = (
+      afterStepIndex: number | 'before-all' | 'after-all',
+    ): HTMLElement => {
+      const zone = document.createElement('div')
+      Object.assign(zone.style, DROP_ZONE_STYLE)
+      zone.className = 'plan-panel-drop-zone'
+      zone.dataset.ghost = '1'
+      zone.dataset.afterStepIndex =
+        afterStepIndex === 'before-all'
+          ? 'before'
+          : afterStepIndex === 'after-all'
+            ? 'after'
+            : String(afterStepIndex)
+
+      const cleanup = dropTargetForElements({
+        element: zone,
+        getData: () => ({ type: 'ghost', afterStepIndex }),
+        canDrop: ({ source }) => {
+          const d = source.data as { type: string }
+          if (dragType === 'journey') return d.type === 'journey'
+          return d.type === 'cargo'
+        },
+        onDrop: ({ source }) => {
+          const d = source.data as { type: string; vehicleId?: number; fromStepIndex?: number }
+          if (d.type === 'journey' && d.vehicleId !== undefined && d.fromStepIndex !== undefined) {
+            if (afterStepIndex === 'before-all') {
+              this.onMoveJourneyIntent?.(d.vehicleId, d.fromStepIndex, 'before-all')
+            } else if (afterStepIndex === 'after-all') {
+              this.onMoveJourneyIntent?.(d.vehicleId, d.fromStepIndex, 'after-all')
+            } else {
+              this.onMoveJourneyIntent?.(d.vehicleId, d.fromStepIndex, afterStepIndex)
+            }
+          } else if (d.type === 'cargo' && d.fromStepIndex !== undefined) {
+            const toAfter =
+              afterStepIndex === 'before-all'
+                ? -1
+                : afterStepIndex === 'after-all'
+                  ? steps.length - 1
+                  : afterStepIndex
+            this.onMoveCargoStep?.(d.fromStepIndex, toAfter)
+          }
+        },
+      })
+      cleanups.push(cleanup)
+      return zone
+    }
+
+    for (let i = 0; i <= sections.length; i++) {
+      const after: number | 'before-all' | 'after-all' =
+        i === 0 ? 'before-all' : i === sections.length ? 'after-all' : i - 1
+      const zone = createGhostZone(after)
+      if (i < sections.length) {
+        this.aside.insertBefore(zone, sections[i])
+      } else {
+        this.aside.appendChild(zone)
+      }
+    }
+
+    if (dragType === 'journey' && vehicleId !== undefined) {
+      const journeyCards = this.aside.querySelectorAll<HTMLElement>('[data-draggable="journey"]')
+      journeyCards.forEach((card) => {
+        const cardStepIndex = Number(card.dataset.stepIndex)
+        const cardVehicleId = Number(card.dataset.vehicleId)
+        const isReplace = cardVehicleId === vehicleId
+        const cleanup = dropTargetForElements({
+          element: card,
+          getData: () => ({ type: 'in-step', stepIndex: cardStepIndex }),
+          canDrop: ({ source }) => {
+            const d = source.data as { type: string; vehicleId?: number }
+            return d.type === 'journey' && d.vehicleId === vehicleId
+          },
+          onDropTargetChange: ({ location, self }) => {
+            if (isReplace) {
+              const isOver = location.current.dropTargets.some((dt) => dt.element === self.element)
+              card.style.background = isOver ? 'rgba(255,80,80,0.35)' : 'rgba(255,255,255,0.08)'
+              card.style.border = isOver ? '1px dashed rgba(255,255,255,0.6)' : 'none'
+            }
+          },
+          onDrop: ({ source }) => {
+            const d = source.data as { vehicleId?: number; fromStepIndex?: number }
+            if (d.vehicleId !== undefined && d.fromStepIndex !== undefined) {
+              this.onMoveJourneyIntentIntoStep?.(d.vehicleId, d.fromStepIndex, cardStepIndex)
+            }
+            card.style.background = ''
+            card.style.border = ''
+          },
+        })
+        cleanups.push(cleanup)
+      })
+    }
+
+    this.dropTargetCleanups = cleanups
+    this.aside.classList.add('plan-panel-dragging')
+  }
+
+  private hideDropTargets(): void {
+    for (const c of this.dropTargetCleanups) c()
+    this.dropTargetCleanups = []
+    const zones = this.aside?.querySelectorAll('.plan-panel-drop-zone')
+    zones?.forEach((z) => z.remove())
+    this.aside?.classList.remove('plan-panel-dragging')
+    const journeyCards = this.aside?.querySelectorAll<HTMLElement>('[data-draggable="journey"]')
+    journeyCards?.forEach((card) => {
+      card.style.background = ''
+      card.style.border = ''
+    })
+  }
 
   private buildJourneySection(step: DerivedJourneyStep, plan: Plan): HTMLElement {
     const section = document.createElement('section')
+    section.dataset.stepIndex = String(step.stepIndex)
     Object.assign(section.style, { marginBottom: '0.75rem' })
 
     const heading = document.createElement('h2')
@@ -77,18 +253,15 @@ export class PlanPanel {
       fontSize: '13px',
       fontWeight: 'bold',
     })
-
     const labelSpan = document.createElement('span')
     labelSpan.textContent = `Journey #${step.stepIndex}`
     heading.appendChild(labelSpan)
-
     if (step.stepTraveltime > 0) {
       const ttSpan = document.createElement('span')
       ttSpan.textContent = `⏱ ${step.stepTraveltime}`
       Object.assign(ttSpan.style, { fontSize: '11px', fontWeight: 'normal', opacity: '0.75' })
       heading.appendChild(ttSpan)
     }
-
     section.appendChild(heading)
 
     const journeysDiv = document.createElement('div')
@@ -111,7 +284,7 @@ export class PlanPanel {
         cursor: 'grab',
         minHeight: `${Math.max(28, j.traveltime)}px`,
       })
-      card.draggable = true
+      card.dataset.draggable = 'journey'
       card.dataset.stepIndex = String(step.stepIndex)
       card.dataset.vehicleId = String(j.vehicleId)
 
@@ -136,40 +309,25 @@ export class PlanPanel {
         this.onRemoveJourneyIntent?.(step.stepIndex, j.vehicleId)
       })
 
-      card.addEventListener('dragstart', (e) => {
-        if (!e.dataTransfer) return
-        e.dataTransfer.setData('application/journey-intent', JSON.stringify({
-          vehicleId: j.vehicleId,
-          fromStepIndex: step.stepIndex,
-        }))
-        e.dataTransfer.effectAllowed = 'move'
-      })
-
       card.appendChild(text)
       card.appendChild(removeBtn)
       journeysDiv.appendChild(card)
     }
 
     section.appendChild(journeysDiv)
-
-    // Drop target for journey intents after this step
-    section.appendChild(this.createJourneyDropZone(step.stepIndex))
-
     return section
   }
 
   private buildCargoSection(step: DerivedCargoStep, plan: Plan): HTMLElement {
     const section = document.createElement('section')
+    section.dataset.stepIndex = String(step.stepIndex)
     Object.assign(section.style, {
       marginBottom: '0.75rem',
       borderLeft: '2px solid rgba(255,255,255,0.15)',
       paddingLeft: '8px',
     })
 
-    section.appendChild(this.createCargoDropZone(step.stepIndex - 1))
     section.appendChild(this.buildCargoCard(step.action, step.stepIndex, plan))
-    section.appendChild(this.createCargoDropZone(step.stepIndex))
-
     return section
   }
 
@@ -187,7 +345,7 @@ export class PlanPanel {
       cursor: 'grab',
       border: action.valid ? 'none' : '1px solid rgba(255,80,80,0.4)',
     })
-    card.draggable = true
+    card.dataset.draggable = 'cargo'
     card.dataset.stepIndex = String(stepIndex)
 
     const text = document.createElement('span')
@@ -222,85 +380,7 @@ export class PlanPanel {
     })
     card.appendChild(removeBtn)
 
-    card.addEventListener('dragstart', (e) => {
-      if (!e.dataTransfer) return
-      e.dataTransfer.setData('application/cargo-intent', JSON.stringify({ fromStepIndex: stepIndex }))
-      e.dataTransfer.effectAllowed = 'move'
-    })
-
     return card
-  }
-
-  private createJourneyDropZone(afterStepIndex: number | 'before-all' | 'after-all'): HTMLElement {
-    const zone = document.createElement('div')
-    Object.assign(zone.style, {
-      height: '20px',
-      borderRadius: '4px',
-      margin: '4px 0',
-      border: '1px dashed rgba(255,255,255,0.18)',
-      transition: 'background 0.15s, border-color 0.15s',
-    })
-
-    zone.addEventListener('dragover', (e) => {
-      if (!e.dataTransfer?.types.includes('application/journey-intent')) return
-      e.preventDefault()
-      zone.style.background = 'rgba(255,255,255,0.22)'
-      zone.style.borderColor = 'rgba(255,255,255,0.5)'
-    })
-    zone.addEventListener('dragleave', () => {
-      zone.style.background = ''
-      zone.style.borderColor = 'rgba(255,255,255,0.18)'
-    })
-    zone.addEventListener('drop', (e) => {
-      zone.style.background = ''
-      zone.style.borderColor = 'rgba(255,255,255,0.18)'
-      if (!e.dataTransfer) return
-      const raw = e.dataTransfer.getData('application/journey-intent')
-      if (!raw) return
-      const { vehicleId, fromStepIndex } = JSON.parse(raw) as { vehicleId: number; fromStepIndex: number }
-      if (afterStepIndex === 'before-all') {
-        this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, 'before-all')
-      } else if (afterStepIndex === 'after-all') {
-        this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, 'after-all')
-      } else {
-        this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, afterStepIndex)
-      }
-    })
-
-    return zone
-  }
-
-  private createCargoDropZone(toAfterStepIndex: number): HTMLElement {
-    const zone = document.createElement('div')
-    Object.assign(zone.style, {
-      height: '12px',
-      borderRadius: '4px',
-      margin: '2px 0',
-      border: '1px dashed rgba(255,255,255,0.12)',
-      transition: 'background 0.15s, border-color 0.15s',
-    })
-
-    zone.addEventListener('dragover', (e) => {
-      if (!e.dataTransfer?.types.includes('application/cargo-intent')) return
-      e.preventDefault()
-      zone.style.background = 'rgba(255,255,255,0.2)'
-      zone.style.borderColor = 'rgba(255,255,255,0.45)'
-    })
-    zone.addEventListener('dragleave', () => {
-      zone.style.background = ''
-      zone.style.borderColor = 'rgba(255,255,255,0.12)'
-    })
-    zone.addEventListener('drop', (e) => {
-      zone.style.background = ''
-      zone.style.borderColor = 'rgba(255,255,255,0.12)'
-      if (!e.dataTransfer) return
-      const raw = e.dataTransfer.getData('application/cargo-intent')
-      if (!raw) return
-      const { fromStepIndex } = JSON.parse(raw) as { fromStepIndex: number }
-      this.onMoveCargoStep?.(fromStepIndex, toAfterStepIndex)
-    })
-
-    return zone
   }
 
   private describeCargoIntent(intent: CargoIntent, plan: Plan): string {

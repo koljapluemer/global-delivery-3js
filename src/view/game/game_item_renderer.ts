@@ -46,6 +46,18 @@ const INVALID_BUBBLE_SCALE = 0.025
 
 const UP = new THREE.Vector3(0, 1, 0)
 
+/** Clone materials on meshes so each instance has its own; avoids shared emissive (hover highlight) across instances. */
+function cloneMaterialsInObject(obj: THREE.Object3D): void {
+  obj.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map((m) => m.clone())
+    } else {
+      child.material = child.material.clone()
+    }
+  })
+}
+
 /** Maps VehicleType.meshPath values to their Vite-resolved asset URLs. */
 const VEHICLE_MESH_URLS: Record<string, string> = {
   'assets/items/vehicles/car.glb': carUrl,
@@ -167,6 +179,7 @@ export class GameItemRenderer {
       const outwardNormal = tilePos.clone().sub(globeCenter).normalize()
 
       const obj = (await this.loadGltf(url)).scene.clone()
+      cloneMaterialsInObject(obj)
       obj.scale.setScalar(vehicleType.scale)
       obj.quaternion.setFromUnitVectors(UP, outwardNormal)
       obj.position.copy(tilePos).addScaledVector(outwardNormal, vehicleType.offsetAlongNormal)
@@ -189,6 +202,7 @@ export class GameItemRenderer {
       const outwardNormal = tilePos.clone().sub(globeCenter).normalize()
 
       const obj = (await this.loadGltf(crateUrl)).scene.clone()
+      cloneMaterialsInObject(obj)
       obj.scale.setScalar(CRATE_SCALE)
       obj.quaternion.setFromUnitVectors(UP, outwardNormal)
       obj.position.copy(tilePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)
@@ -226,6 +240,7 @@ export class GameItemRenderer {
 
         // Pin at destination
         const pin = (await this.loadGltf(pinUrl)).scene.clone()
+        cloneMaterialsInObject(pin)
         pin.scale.setScalar(PIN_SCALE)
         pin.quaternion.setFromUnitVectors(UP, outwardNormal)
         pin.position.copy(tilePos).addScaledVector(outwardNormal, PIN_SURFACE_OFFSET)
@@ -378,6 +393,7 @@ export class GameItemRenderer {
     const outwardNormal = cratePos.clone().sub(globeCenter).normalize()
 
     const ghost = (await this.loadGltf(crateUrl)).scene.clone()
+    cloneMaterialsInObject(ghost)
     ghost.scale.setScalar(CRATE_SCALE)
     ghost.quaternion.setFromUnitVectors(UP, outwardNormal)
     ghost.position.copy(cratePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)

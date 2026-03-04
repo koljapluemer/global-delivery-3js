@@ -14,7 +14,10 @@ import { LabelRenderer } from './view/game/label_renderer'
 import { PlanPanel } from './view/ui/plan_panel/plan_panel'
 import { InspectorPanel } from './view/ui/inspector_panel/inspector_panel'
 import { HudPanel } from './view/ui/hud_panel/hud_panel'
-import { InputModeController } from './controller/input_mode/input_mode'
+import { createActor } from 'xstate'
+import { inputModeMachine } from './controller/input_mode/input_mode_machine'
+import { InteractionManager } from 'three.interactive'
+import { DragGesture } from '@use-gesture/vanilla'
 import { PinPlacementPreview } from './view/game/pin_placement_preview'
 import { CrateDropPreview } from './view/game/crate_drop_preview'
 import { CrateLoadPreview } from './view/game/crate_load_preview'
@@ -44,8 +47,63 @@ const undoHistory = new UndoRedoHistory()
 let derived: DerivedPlanState = derivePlanState(intentManager.getPlan(), navApi, tileCentersApi)
 
 const gameItemRenderer = new GameItemRenderer(globeScene.scene, navApi, renderer)
-const inputModeController = new InputModeController()
+const inputModeActor = createActor(inputModeMachine).start()
 const cancelButton = new CancelButton()
+let interactionManager: InteractionManager | null = null
+let addedPickables: THREE.Object3D[] = []
+
+function syncInteractionManager(): void {
+  if (!interactionManager) return
+  addedPickables.forEach((o) => interactionManager!.remove(o))
+  addedPickables = []
+  const pickables = gameItemRenderer.getPickableObjects()
+  pickables.forEach((obj) => {
+    interactionManager!.add(obj)
+    addedPickables.push(obj)
+    const onHover = (isOver: boolean) => {
+      // #region agent log
+      if (isOver) fetch('http://127.0.0.1:7244/ingest/addc2f4a-639b-4e2f-b495-8f3a189e2b6b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:mouseover',message:'hover',data:{entityType:(obj.userData as {entityType?:string})?.entityType,entityId:(obj.userData as {entityId?:number})?.entityId,pickablesCount:addedPickables.length},timestamp:Date.now(),hypothesisId:'H5-H6'})}).catch(()=>{});
+      // #endregion
+      gameItemRenderer.setHovered(isOver ? obj : null)
+      const snapshot = inputModeActor.getSnapshot()
+      if (!snapshot.matches({ value: 'crateLoad' }) || !isOver) return
+      const ctx = snapshot.context
+      const meta = obj.userData as { entityType?: string; entityId?: number; vehicleId?: number }
+      let vehicleId: number | undefined
+      if (meta.entityType === 'VEHICLE' && meta.entityId !== undefined) vehicleId = meta.entityId
+      else if (meta.entityType === 'PIN' && meta.vehicleId !== undefined) vehicleId = meta.vehicleId
+      if (vehicleId !== undefined && ctx.crateId !== undefined) {
+        const intent = { kind: 'LOAD' as const, crateId: ctx.crateId, vehicleId }
+        const insertAfter = findFirstValidInsertionPoint(intent, derived)
+        if (insertAfter !== null) {
+          inputModeActor.send({ type: 'UPDATE_LOAD_TARGET', payload: { vehicleId, insertAfterStepIndex: insertAfter } })
+          const snap = derived.stepSnapshots[insertAfter]
+          const crateTileAtLoad = snap.crateOnGround.get(ctx.crateId)
+          const vehicleTileAtLoad = snap.vehiclePositions.get(vehicleId)
+          if (crateTileAtLoad !== undefined && vehicleTileAtLoad !== undefined) {
+            const hue = intentManager.getPlan().vehicles[vehicleId]?.hue ?? 0
+            crateLoadPreview?.update(crateTileAtLoad, vehicleTileAtLoad, hue, globeCenter, tileCentersApi)
+          } else crateLoadPreview?.hide()
+        } else {
+          inputModeActor.send({ type: 'UPDATE_LOAD_TARGET', payload: null })
+          crateLoadPreview?.hide()
+        }
+      } else {
+        inputModeActor.send({ type: 'UPDATE_LOAD_TARGET', payload: null })
+        crateLoadPreview?.hide()
+      }
+    }
+    ;(obj as THREE.Object3D & { addEventListener: (name: string, fn: () => void) => void }).addEventListener('mouseover', () => onHover(true))
+    ;(obj as THREE.Object3D & { addEventListener: (name: string, fn: () => void) => void }).addEventListener('mouseout', () => {
+      gameItemRenderer.setHovered(null)
+      if (inputModeActor.getSnapshot().matches({ value: 'crateLoad' })) {
+        inputModeActor.send({ type: 'UPDATE_LOAD_TARGET', payload: null })
+        crateLoadPreview?.hide()
+      }
+    })
+    // Normal-mode clicks are handled in handlePointerUp via pointerDownHit; no object click listener to avoid duplicates.
+  })
+}
 
 const gameState: GameState = { money: 0, stamps: 0, traveltimeBudget: 1000 }
 
@@ -58,22 +116,25 @@ planPanel.mount(document.body, tileCentersApi)
 const inspectorPanel = new InspectorPanel()
 inspectorPanel.mount(document.body)
 
-cancelButton.mount(document.body, () => inputModeController.enterNormal())
+cancelButton.mount(document.body, () => inputModeActor.send({ type: 'CANCEL' }))
 
 let labelRenderer: LabelRenderer | null = null
 let pinPlacementPreview: PinPlacementPreview | null = null
 let crateDropPreview: CrateDropPreview | null = null
 let crateLoadPreview: CrateLoadPreview | null = null
-let lastValidLoadTarget: { vehicleId: number; insertAfterStepIndex: number } | null = null
-let lastValidUnloadTarget: { toTileId: number; isDelivery: boolean; insertAfterStepIndex: number } | null = null
 const pinContextMenu = new PinContextMenu()
 pinContextMenu.mount(document.body)
 const crateLoadMenu = new CrateLoadMenu()
 crateLoadMenu.mount(document.body)
 let lastHoveredTile: TileCenter | null = null
 let globeCenter = new THREE.Vector3()
-let mousedownPos: { x: number; y: number } | null = null
-const DRAG_PX = 5
+let pointerDownHit: { meta: Record<string, unknown>; object: THREE.Object3D } | null = null
+let lastPointerUp = { clientX: 0, clientY: 0 }
+const DRAG_THRESHOLD_PX = 5
+
+renderer.domElement.addEventListener('pointerup', (e: PointerEvent) => {
+  lastPointerUp = { clientX: e.clientX, clientY: e.clientY }
+})
 
 function ndcFromEvent(e: MouseEvent, canvas: HTMLCanvasElement): THREE.Vector2 {
   const rect = canvas.getBoundingClientRect()
@@ -135,6 +196,7 @@ async function rerender(): Promise<void> {
   const legs = deriveRouteLegs(derived)
   gameItemRenderer.dispose()
   await gameItemRenderer.render(intentManager.getPlan(), derived, tileCentersApi, globeCenter)
+  syncInteractionManager()
   labelRenderer?.syncCrateLabels(intentManager.getPlan(), tileCentersApi)
   labelRenderer?.syncVehicleLabels(intentManager.getPlan(), tileCentersApi)
   labelRenderer?.syncPinsFromPlan(intentManager.getPlan(), tileCentersApi)
@@ -149,7 +211,7 @@ async function rerender(): Promise<void> {
 inspectorPanel.onAddPin = (vehicleId) => {
   const fromTileId = getVehicleLastTileId(vehicleId)
   if (fromTileId === null) return
-  inputModeController.enterPinPlacement(vehicleId, fromTileId)
+  inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId })
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +231,7 @@ inspectorPanel.onRemoveCargoIntent = async (stepIndex) => {
 }
 inspectorPanel.onUnloadFromStep = (vehicleId, stepIndex, crateId) => {
   inspectorPanel.hide()
-  inputModeController.enterCrateDrop(vehicleId, stepIndex, crateId)
+  inputModeActor.send({ type: 'ENTER_CRATE_DROP', vehicleId, stepIndex, crateId })
 }
 
 planPanel.onRemoveJourneyIntent = async (stepIndex, vehicleId) => {
@@ -192,6 +254,11 @@ planPanel.onMoveCargoStep = async (fromStepIndex, toAfterStepIndex) => {
   intentManager.moveCargoStep(fromStepIndex, toAfterStepIndex)
   await rerender()
 }
+planPanel.onMoveJourneyIntentIntoStep = async (vehicleId, fromStepIndex, toStepIndex) => {
+  undoHistory.snapshot(intentManager.getPlan())
+  intentManager.moveJourneyIntentIntoStep(vehicleId, fromStepIndex, toStepIndex)
+  await rerender()
+}
 
 // ---------------------------------------------------------------------------
 // Undo/redo
@@ -211,185 +278,237 @@ window.addEventListener('keydown', async (e) => {
 })
 
 // ---------------------------------------------------------------------------
-// Sync UI / cursor when input mode changes
+// Sync UI / cursor when input mode changes (XState snapshot)
 // ---------------------------------------------------------------------------
-inputModeController.onChange((mode) => {
-  const needsCancel = mode.kind === 'PIN_PLACEMENT' || mode.kind === 'CRATE_DROP' || mode.kind === 'CRATE_LOAD'
+inputModeActor.subscribe((snapshot) => {
+  const isNormal = snapshot.matches({ value: 'normal' })
+  const isPinPlacement = snapshot.matches({ value: 'pinPlacement' })
+  const isCrateDrop = snapshot.matches({ value: 'crateDrop' })
+  const isCrateLoad = snapshot.matches({ value: 'crateLoad' })
+  const isPinDrag = snapshot.matches({ value: 'pinDrag' })
+  const isRouteSplit = snapshot.matches({ value: 'routeSplit' })
+  const needsCancel = isPinPlacement || isCrateDrop || isCrateLoad
   cancelButton[needsCancel ? 'show' : 'hide']()
   renderer.domElement.style.cursor =
-    mode.kind === 'PIN_PLACEMENT' || mode.kind === 'CRATE_DROP' || mode.kind === 'CRATE_LOAD' ? 'crosshair' :
-    (mode.kind === 'PIN_DRAG' || mode.kind === 'ROUTE_SPLIT') ? 'grabbing' : ''
-  if (mode.kind === 'NORMAL') {
+    isPinPlacement || isCrateDrop || isCrateLoad ? 'crosshair' :
+    isPinDrag || isRouteSplit ? 'grabbing' : ''
+  if (isNormal) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/addc2f4a-639b-4e2f-b495-8f3a189e2b6b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:machine-subscribe',message:'normal branch hiding panels',data:{isNormal},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+    // #endregion
     pinPlacementPreview?.hide()
     crateDropPreview?.hide()
     crateLoadPreview?.hide()
     pinContextMenu.hide()
     crateLoadMenu.hide()
-    lastValidLoadTarget = null
   }
-  if (mode.kind !== 'NORMAL') gameItemRenderer.setHovered(null)
+  if (!isNormal) gameItemRenderer.setHovered(null)
 })
 
 // ---------------------------------------------------------------------------
-// Drag detection: mousedown starts a potential drag; mouseup confirms or clicks
+// Pointer down: record hit and transition to pinDrag/routeSplit if PIN/ROUTE_LINE
 // ---------------------------------------------------------------------------
-renderer.domElement.addEventListener('mousedown', (e) => {
-  if (e.button !== 0) return
-  mousedownPos = { x: e.clientX, y: e.clientY }
-  if (inputModeController.getMode().kind !== 'NORMAL') return
+renderer.domElement.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (e.button !== 0) return
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(ndcFromEvent(e as unknown as MouseEvent, renderer.domElement), mainCamera.camera)
+    const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
+    pointerDownHit = hits.length ? { meta: hits[0].object.userData as Record<string, unknown>, object: hits[0].object } : null
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/addc2f4a-639b-4e2f-b495-8f3a189e2b6b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:pointerdown',message:'pointer down',data:{hitsLen:hits.length,entityType:pointerDownHit?.meta?.entityType,entityId:pointerDownHit?.meta?.entityId},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
 
-  const raycaster = new THREE.Raycaster()
-  raycaster.setFromCamera(ndcFromEvent(e, renderer.domElement), mainCamera.camera)
-  const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
-  if (!hits.length) return
-  const meta = hits[0].object.userData
+    const snapshot = inputModeActor.getSnapshot()
+    if (!snapshot.matches({ value: 'normal' })) return
+    if (!hits.length) return
+    const meta = hits[0].object.userData as Record<string, unknown>
 
-  if (meta.entityType === 'PIN') {
-    const plan = intentManager.getPlan()
-    const stepIndex: number = meta.stepIndex
-    // prevTileId: vehicle position before this journey step
-    const prevSnapshot = snapshotBefore(stepIndex)
-    const prevTileId = prevSnapshot.vehiclePositions.get(meta.vehicleId)
-    if (prevTileId === undefined) return
-    // nextTileId: next journey step for this vehicle after stepIndex
-    let nextTileId: number | undefined
-    for (let i = stepIndex + 1; i < plan.steps.length; i++) {
-      const s = plan.steps[i]
-      if (s.kind !== 'JOURNEY') continue
-      const jj = s.journeys.find((j) => j.vehicleId === meta.vehicleId)
-      if (jj) { nextTileId = jj.toTileId; break }
+    if (meta.entityType === 'PIN') {
+      const plan = intentManager.getPlan()
+      const stepIndex = meta.stepIndex as number
+      const prevSnapshot = snapshotBefore(stepIndex)
+      const prevTileId = prevSnapshot.vehiclePositions.get(meta.vehicleId as number)
+      if (prevTileId === undefined) return
+      let nextTileId: number | undefined
+      for (let i = stepIndex + 1; i < plan.steps.length; i++) {
+        const s = plan.steps[i]
+        if (s.kind !== 'JOURNEY') continue
+        const jj = s.journeys.find((j) => j.vehicleId === meta.vehicleId)
+        if (jj) { nextTileId = jj.toTileId; break }
+      }
+      inputModeActor.send({
+        type: 'POINTER_DOWN_PIN',
+        vehicleId: meta.vehicleId as number,
+        stepIndex,
+        prevTileId,
+        nextTileId,
+      })
+    } else if (meta.entityType === 'ROUTE_LINE') {
+      inputModeActor.send({
+        type: 'POINTER_DOWN_ROUTE_LINE',
+        vehicleId: meta.vehicleId as number,
+        insertAfterStepIndex: meta.insertAfterStepIndex as number,
+        fromTileId: meta.fromTileId as number,
+        toTileId: meta.toTileId as number,
+      })
     }
-    inputModeController.enterPinDrag(meta.vehicleId, meta.stepIndex, prevTileId, nextTileId)
-  } else if (meta.entityType === 'ROUTE_LINE') {
-    inputModeController.enterRouteSplit(
-      meta.vehicleId, meta.insertAfterStepIndex, meta.fromTileId, meta.toTileId)
-  }
-})
+  },
+  true,
+)
 
-renderer.domElement.addEventListener('mouseup', async (e) => {
-  if (e.button !== 0) return
-  const mode = inputModeController.getMode()
-  const dragged = mousedownPos !== null && (
-    Math.abs(e.clientX - mousedownPos.x) > DRAG_PX ||
-    Math.abs(e.clientY - mousedownPos.y) > DRAG_PX)
-  mousedownPos = null
+// ---------------------------------------------------------------------------
+// Drag vs click: use-gesture reports pointer up; we handle by mode and context
+// ---------------------------------------------------------------------------
+const handlePointerUp = async (e: { clientX: number; clientY: number }, isDrag: boolean) => {
+  const snapshot = inputModeActor.getSnapshot()
+  const ctx = snapshot.context
+  // #region agent log
+  const stateValue = typeof snapshot.value === 'object' && snapshot.value !== null && 'value' in snapshot.value ? (snapshot.value as { value: string }).value : String(snapshot.value);
+  fetch('http://127.0.0.1:7244/ingest/addc2f4a-639b-4e2f-b495-8f3a189e2b6b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:handlePointerUp',message:'pointer up',data:{stateValue,isDrag,hasPointerDownHit:!!pointerDownHit,entityType:pointerDownHit?.meta?.entityType},timestamp:Date.now(),hypothesisId:'H1-H3'})}).catch(()=>{});
+  // #endregion
 
-  if (mode.kind === 'PIN_DRAG') {
-    if (!dragged) {
-      // Click → open context menu above the pin
+  if (snapshot.matches({ value: 'pinDrag' })) {
+    const vehicleId = ctx.vehicleId!
+    const stepIndex = ctx.stepIndex!
+    if (!isDrag) {
       pinPlacementPreview?.hide()
-      inputModeController.enterNormal()
+      inputModeActor.send({ type: 'POINTER_UP', isDrag: false })
       pinContextMenu.show(
-        mode.vehicleId, mode.stepIndex,
-        intentManager.getPlan(), derived, tileCentersApi,
-        e.clientX, e.clientY,
+        vehicleId,
+        stepIndex,
+        intentManager.getPlan(),
+        derived,
+        tileCentersApi,
+        e.clientX,
+        e.clientY,
         {
           onUnload: (crateId) => {
-            labelRenderer?.setPinLabelOffset(mode.vehicleId, mode.stepIndex, 0)
+            labelRenderer?.setPinLabelOffset(vehicleId, stepIndex, 0)
             pinContextMenu.hide()
-            inputModeController.enterCrateDrop(mode.vehicleId, mode.stepIndex, crateId)
+            inputModeActor.send({ type: 'ENTER_CRATE_DROP', vehicleId, stepIndex, crateId })
           },
           onRemoveUnload: async (cargoStepIndex) => {
-            labelRenderer?.setPinLabelOffset(mode.vehicleId, mode.stepIndex, 0)
+            labelRenderer?.setPinLabelOffset(vehicleId, stepIndex, 0)
             undoHistory.snapshot(intentManager.getPlan())
             intentManager.removeCargoIntent(cargoStepIndex)
             pinContextMenu.hide()
             await rerender()
             inspectorPanel.refresh(intentManager.getPlan(), derived, tileCentersApi)
           },
-          onClose: () => labelRenderer?.setPinLabelOffset(mode.vehicleId, mode.stepIndex, 0),
+          onClose: () => labelRenderer?.setPinLabelOffset(vehicleId, stepIndex, 0),
         },
       )
-      labelRenderer?.setPinLabelOffset(mode.vehicleId, mode.stepIndex, 80)
-      return
+      labelRenderer?.setPinLabelOffset(vehicleId, stepIndex, 80)
+    } else {
+      if (lastHoveredTile) {
+        undoHistory.snapshot(intentManager.getPlan())
+        intentManager.updateJourneyTarget(stepIndex, vehicleId, lastHoveredTile.tile_id)
+      }
+      pinPlacementPreview?.hide()
+      await rerender()
+      inspectorPanel.show({ kind: 'VEHICLE', id: vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
+      inputModeActor.send({ type: 'CONFIRM_PIN_DRAG' })
     }
-    // Drag → move the pin
-    if (lastHoveredTile) {
-      undoHistory.snapshot(intentManager.getPlan())
-      intentManager.updateJourneyTarget(mode.stepIndex, mode.vehicleId, lastHoveredTile.tile_id)
-    }
-    pinPlacementPreview?.hide()
-    await rerender()
-    inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
-    inputModeController.enterNormal()
+    pointerDownHit = null
     return
   }
 
-  if (mode.kind === 'ROUTE_SPLIT') {
-    if (dragged && lastHoveredTile) {
+  if (snapshot.matches({ value: 'routeSplit' })) {
+    const vehicleId = ctx.vehicleId!
+    const insertAfterStepIndex = ctx.insertAfterStepIndex!
+    if (isDrag && lastHoveredTile) {
       undoHistory.snapshot(intentManager.getPlan())
-      intentManager.insertJourneyStepAfter(mode.insertAfterStepIndex, mode.vehicleId, lastHoveredTile.tile_id)
+      intentManager.insertJourneyStepAfter(insertAfterStepIndex, vehicleId, lastHoveredTile.tile_id)
     }
     pinPlacementPreview?.hide()
     await rerender()
-    inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
-    inputModeController.enterNormal()
+    inspectorPanel.show({ kind: 'VEHICLE', id: vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
+    inputModeActor.send({ type: 'CONFIRM_ROUTE_SPLIT' })
+    pointerDownHit = null
     return
   }
 
-  if (mode.kind === 'CRATE_DROP') {
-    if (lastValidUnloadTarget) {
-      const { toTileId, isDelivery, insertAfterStepIndex } = lastValidUnloadTarget
+  if (snapshot.matches({ value: 'crateDrop' })) {
+    const unload = ctx.lastValidUnloadTarget
+    if (unload) {
+      const { toTileId, isDelivery, insertAfterStepIndex } = unload
       undoHistory.snapshot(intentManager.getPlan())
-      intentManager.insertCargoStepAfter(insertAfterStepIndex, isDelivery
-        ? { kind: 'DELIVER', crateId: mode.crateId, vehicleId: mode.vehicleId, toTileId }
-        : { kind: 'UNLOAD', crateId: mode.crateId, vehicleId: mode.vehicleId, toTileId })
-      lastValidUnloadTarget = null
+      intentManager.insertCargoStepAfter(
+        insertAfterStepIndex,
+        isDelivery
+          ? { kind: 'DELIVER', crateId: ctx.crateId!, vehicleId: ctx.vehicleId!, toTileId }
+          : { kind: 'UNLOAD', crateId: ctx.crateId!, vehicleId: ctx.vehicleId!, toTileId },
+      )
       crateDropPreview?.hide()
       await rerender()
-      inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
-      inputModeController.enterNormal()
+      inspectorPanel.show({ kind: 'VEHICLE', id: ctx.vehicleId! }, intentManager.getPlan(), derived, tileCentersApi)
     }
+    inputModeActor.send({ type: 'CONFIRM_CRATE_DROP' })
+    pointerDownHit = null
     return
   }
 
-  if (mode.kind === 'CRATE_LOAD') {
-    if (!dragged && lastValidLoadTarget) {
+  if (snapshot.matches({ value: 'crateLoad' })) {
+    if (!isDrag && ctx.lastValidLoadTarget) {
+      const { vehicleId, insertAfterStepIndex } = ctx.lastValidLoadTarget
       undoHistory.snapshot(intentManager.getPlan())
-      intentManager.insertCargoStepAfter(lastValidLoadTarget.insertAfterStepIndex, {
+      intentManager.insertCargoStepAfter(insertAfterStepIndex, {
         kind: 'LOAD',
-        crateId: mode.crateId,
-        vehicleId: lastValidLoadTarget.vehicleId,
+        crateId: ctx.crateId!,
+        vehicleId,
       })
       crateLoadPreview?.hide()
       await rerender()
-      inspectorPanel.show({ kind: 'VEHICLE', id: lastValidLoadTarget.vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
-      inputModeController.enterNormal()
+      inspectorPanel.show({ kind: 'VEHICLE', id: vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
     }
+    inputModeActor.send({ type: 'CONFIRM_CRATE_LOAD' })
+    pointerDownHit = null
     return
   }
 
-  if (mode.kind === 'PIN_PLACEMENT') {
-    if (!lastHoveredTile) return
-    undoHistory.snapshot(intentManager.getPlan())
-    intentManager.addPinAfterLastVehicleStep(mode.vehicleId, lastHoveredTile.tile_id)
-    pinPlacementPreview?.hide()
-    await rerender()
-    inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
-    inputModeController.enterNormal()
+  if (snapshot.matches({ value: 'pinPlacement' })) {
+    if (lastHoveredTile) {
+      undoHistory.snapshot(intentManager.getPlan())
+      intentManager.addPinAfterLastVehicleStep(ctx.vehicleId!, lastHoveredTile.tile_id)
+      pinPlacementPreview?.hide()
+      await rerender()
+      inspectorPanel.show({ kind: 'VEHICLE', id: ctx.vehicleId! }, intentManager.getPlan(), derived, tileCentersApi)
+    }
+    inputModeActor.send({ type: 'CONFIRM_PIN_PLACEMENT', vehicleId: ctx.vehicleId!, fromTileId: ctx.fromTileId! })
+    pointerDownHit = null
     return
   }
 
-  // NORMAL mode + no meaningful drag → treat as selection click
-  if (!dragged) {
-    const raycaster = new THREE.Raycaster()
-    raycaster.setFromCamera(ndcFromEvent(e, renderer.domElement), mainCamera.camera)
-    const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
-    if (!hits.length) { inspectorPanel.hide(); return }
-    const meta = hits[0].object.userData as {
-      entityType?: string; entityId?: number; crateId?: number; stepIndex?: number;
-      tileId?: number; actionIndex?: number
+  const isNormalState = snapshot.value === 'normal' || (typeof snapshot.value === 'object' && snapshot.value !== null && (snapshot.value as { value?: string }).value === 'normal')
+  if (isNormalState && !isDrag && pointerDownHit) {
+    const meta = pointerDownHit.meta as {
+      entityType?: string
+      entityId?: number
+      crateId?: number
+      stepIndex?: number
+      tileId?: number
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/addc2f4a-639b-4e2f-b495-8f3a189e2b6b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:normal-branch',message:'normal click branch',data:{entityType:meta.entityType,entityId:meta.entityId,willShowInspector:meta.entityType==='VEHICLE',willShowCrateMenu:meta.entityType==='CRATE'||meta.entityType==='GHOST_CRATE'},timestamp:Date.now(),hypothesisId:'H3-H4'})}).catch(()=>{});
+    // #endregion
     if (meta.entityType === 'VEHICLE') {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/addc2f4a-639b-4e2f-b495-8f3a189e2b6b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:call-show-inspector',message:'calling inspectorPanel.show',data:{vehicleId:meta.entityId},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
       inspectorPanel.show({ kind: 'VEHICLE', id: meta.entityId! }, intentManager.getPlan(), derived, tileCentersApi)
     } else if (meta.entityType === 'CRATE' || meta.entityType === 'GHOST_CRATE') {
       const crateId = meta.entityType === 'CRATE' ? meta.entityId! : meta.crateId!
       const stepIndex = meta.stepIndex ?? 0
       const crateTileId = meta.tileId ?? 0
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/addc2f4a-639b-4e2f-b495-8f3a189e2b6b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:call-show-crateMenu',message:'calling crateLoadMenu.show',data:{crateId},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
       crateLoadMenu.show(crateId, intentManager.getPlan(), e.clientX, e.clientY, {
         onLoad: () => {
           crateLoadMenu.hide()
-          inputModeController.enterCrateLoad(crateId, stepIndex, crateTileId)
+          inputModeActor.send({ type: 'ENTER_CRATE_LOAD', crateId, stepIndex, crateTileId })
         },
         onClose: () => {},
       })
@@ -400,70 +519,29 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
     } else {
       inspectorPanel.hide()
     }
+    pointerDownHit = null
+  } else if (isNormalState) {
+    inspectorPanel.hide()
+    pointerDownHit = null
   }
+}
+
+new DragGesture(renderer.domElement, ({ last, movement }) => {
+  // #region agent log
+  if (last) fetch('http://127.0.0.1:7244/ingest/addc2f4a-639b-4e2f-b495-8f3a189e2b6b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:DragGesture',message:'gesture last',data:{movement0:movement[0],movement1:movement[1]},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+  // #endregion
+  if (!last) return
+  const isDrag =
+    Math.abs(movement[0]) > DRAG_THRESHOLD_PX || Math.abs(movement[1]) > DRAG_THRESHOLD_PX
+  handlePointerUp(lastPointerUp, isDrag)
 })
 
-// ---------------------------------------------------------------------------
-// Hover highlight: raycast pickables on every mousemove
-// ---------------------------------------------------------------------------
-renderer.domElement.addEventListener('mousemove', (e) => {
-  const mode = inputModeController.getMode()
-  const raycaster = new THREE.Raycaster()
-  raycaster.setFromCamera(ndcFromEvent(e, renderer.domElement), mainCamera.camera)
-  const hits = raycaster.intersectObjects([...gameItemRenderer.getPickableObjects()], true)
-
-  if (mode.kind === 'CRATE_LOAD') {
-    const hitMeta = hits[0]?.object?.userData as
-      { entityType?: string; entityId?: number; vehicleId?: number; stepIndex?: number } | undefined
-
-    let vehicleId: number | undefined
-    if (hitMeta?.entityType === 'VEHICLE' && hitMeta.entityId !== undefined) {
-      vehicleId = hitMeta.entityId
-    } else if (hitMeta?.entityType === 'PIN' && hitMeta.vehicleId !== undefined) {
-      vehicleId = hitMeta.vehicleId
-    }
-
-    if (vehicleId !== undefined) {
-      const intent = { kind: 'LOAD' as const, crateId: mode.crateId, vehicleId }
-      const insertAfter = findFirstValidInsertionPoint(intent, derived)
-      if (insertAfter !== null) {
-        lastValidLoadTarget = { vehicleId, insertAfterStepIndex: insertAfter }
-        const snap = derived.stepSnapshots[insertAfter]
-        const crateTileAtLoad = snap.crateOnGround.get(mode.crateId)
-        const vehicleTileAtLoad = snap.vehiclePositions.get(vehicleId)
-        gameItemRenderer.setHovered(hits[0].object)
-        if (crateTileAtLoad !== undefined && vehicleTileAtLoad !== undefined) {
-          const hue = intentManager.getPlan().vehicles[vehicleId]?.hue ?? 0
-          crateLoadPreview?.update(crateTileAtLoad, vehicleTileAtLoad, hue, globeCenter, tileCentersApi)
-        } else {
-          crateLoadPreview?.hide()
-        }
-      } else {
-        lastValidLoadTarget = null
-        gameItemRenderer.setHovered(null)
-        crateLoadPreview?.hide()
-      }
-    } else {
-      lastValidLoadTarget = null
-      gameItemRenderer.setHovered(null)
-      crateLoadPreview?.hide()
-    }
-    return
-  }
-
-  if (mode.kind === 'CRATE_DROP') {
-    gameItemRenderer.setHovered(null)
-    return
-  }
-
-  if (mode.kind !== 'NORMAL') return
-  gameItemRenderer.setHovered(hits[0]?.object ?? null)
-})
+// Hover and click are handled by three.interactive (see post-globe-load); no mousemove raycast here.
 
 // ---------------------------------------------------------------------------
 // Post-globe-load: pointer, preview, initial render, labels
 // ---------------------------------------------------------------------------
-globeScene.load().then(({ boundingSphere }) => {
+globeScene.load().then(async ({ boundingSphere }) => {
   globeCenter = boundingSphere.center.clone()
   mainCamera.fitToGlobe(boundingSphere)
 
@@ -476,59 +554,64 @@ globeScene.load().then(({ boundingSphere }) => {
 
   pointer.onHover = (tile) => {
     lastHoveredTile = tile
-    const mode = inputModeController.getMode()
+    const snapshot = inputModeActor.getSnapshot()
+    const ctx = snapshot.context
 
-    if (!tile || mode.kind === 'NORMAL') {
+    if (!tile || snapshot.matches({ value: 'normal' })) {
       pinPlacementPreview?.hide()
       crateDropPreview?.hide()
       crateLoadPreview?.hide()
       return
     }
 
-    if (mode.kind === 'CRATE_DROP') {
+    if (snapshot.matches({ value: 'crateDrop' })) {
       pinPlacementPreview?.hide()
-      const crate = intentManager.getPlan().crates[mode.crateId]
+      const crate = intentManager.getPlan().crates[ctx.crateId!]
       const isDelivery = crate && tile.country_name === crate.destinationCountry
       const intent = isDelivery
-        ? { kind: 'DELIVER' as const, crateId: mode.crateId, vehicleId: mode.vehicleId, toTileId: tile.tile_id }
-        : { kind: 'UNLOAD' as const, crateId: mode.crateId, vehicleId: mode.vehicleId, toTileId: tile.tile_id }
-      {
-        const insertAfter = findFirstValidInsertionPoint(intent, derived)
-        if (insertAfter !== null) {
-          lastValidUnloadTarget = { toTileId: tile.tile_id, isDelivery, insertAfterStepIndex: insertAfter }
-          const snap = derived.stepSnapshots[insertAfter]
-          const vehicleTileId = snap.vehiclePositions.get(mode.vehicleId)
-          if (vehicleTileId !== undefined) {
-            crateDropPreview?.update(
-              tile, vehicleTileId, true,
-              intentManager.getPlan().vehicles[mode.vehicleId]?.hue ?? 0,
-              globeCenter, tileCentersApi,
-            )
-          }
-        } else {
-          lastValidUnloadTarget = null
-          crateDropPreview?.hide()
+        ? { kind: 'DELIVER' as const, crateId: ctx.crateId!, vehicleId: ctx.vehicleId!, toTileId: tile.tile_id }
+        : { kind: 'UNLOAD' as const, crateId: ctx.crateId!, vehicleId: ctx.vehicleId!, toTileId: tile.tile_id }
+      const insertAfter = findFirstValidInsertionPoint(intent, derived)
+      if (insertAfter !== null) {
+        inputModeActor.send({
+          type: 'UPDATE_UNLOAD_TARGET',
+          payload: { toTileId: tile.tile_id, isDelivery, insertAfterStepIndex: insertAfter },
+        })
+        const snap = derived.stepSnapshots[insertAfter]
+        const vehicleTileId = snap.vehiclePositions.get(ctx.vehicleId!)
+        if (vehicleTileId !== undefined) {
+          crateDropPreview?.update(
+            tile,
+            vehicleTileId,
+            true,
+            intentManager.getPlan().vehicles[ctx.vehicleId!]?.hue ?? 0,
+            globeCenter,
+            tileCentersApi,
+          )
         }
+      } else {
+        inputModeActor.send({ type: 'UPDATE_UNLOAD_TARGET', payload: null })
+        crateDropPreview?.hide()
       }
       return
     }
 
     crateDropPreview?.hide()
 
-    if (mode.kind === 'CRATE_LOAD') return
+    if (snapshot.matches({ value: 'crateLoad' })) return
 
-    const vehicle = intentManager.getPlan().vehicles[mode.vehicleId]
+    const vehicle = intentManager.getPlan().vehicles[ctx.vehicleId!]
     if (!vehicle) return
 
     const fromTileId =
-      mode.kind === 'PIN_PLACEMENT' ? mode.fromTileId :
-      mode.kind === 'PIN_DRAG'      ? mode.prevTileId :
-                                      mode.fromTileId   // ROUTE_SPLIT
+      snapshot.matches({ value: 'pinPlacement' }) ? ctx.fromTileId! :
+      snapshot.matches({ value: 'pinDrag' })       ? ctx.prevTileId! :
+                                                     ctx.fromTileId!
 
     const toTileId: number | undefined =
-      mode.kind === 'PIN_DRAG'    ? mode.nextTileId :
-      mode.kind === 'ROUTE_SPLIT' ? mode.toTileId   :
-                                    undefined
+      snapshot.matches({ value: 'pinDrag' })    ? ctx.nextTileId :
+      snapshot.matches({ value: 'routeSplit' }) ? ctx.toTileId   :
+                                                   undefined
 
     pinPlacementPreview?.update(
       tile,
@@ -542,7 +625,10 @@ globeScene.load().then(({ boundingSphere }) => {
     )
   }
 
-  gameItemRenderer.render(intentManager.getPlan(), derived, tileCentersApi, globeCenter)
+  await gameItemRenderer.render(intentManager.getPlan(), derived, tileCentersApi, globeCenter)
+
+  interactionManager = new InteractionManager(renderer, mainCamera.camera, renderer.domElement)
+  syncInteractionManager()
 
   labelRenderer = new LabelRenderer(mainCamera.camera, boundingSphere.center, boundingSphere.radius)
   labelRenderer.onEntityClick = (target) => {
@@ -566,6 +652,7 @@ function animate() {
   const now = performance.now()
   const delta = (now - lastTime) / 1000
   lastTime = now
+  interactionManager?.update()
   renderer.render(globeScene.scene, mainCamera.camera)
   labelRenderer?.update(delta)
   requestAnimationFrame(animate)

@@ -78,6 +78,20 @@ export class PlanIntentManager {
     this.pruneAndMerge()
   }
 
+  /** Move a vehicle's journey intent into a specific journey step. If that step already has an intent for this vehicle, replace it. */
+  moveJourneyIntentIntoStep(vehicleId: number, fromStepIndex: number, toStepIndex: number): void {
+    const fromStep = this.plan.steps[fromStepIndex]
+    const toStep = this.plan.steps[toStepIndex]
+    if (!fromStep || fromStep.kind !== 'JOURNEY' || !toStep || toStep.kind !== 'JOURNEY') return
+    const journeyIdx = fromStep.journeys.findIndex((j) => j.vehicleId === vehicleId)
+    if (journeyIdx === -1) return
+    const [intent] = fromStep.journeys.splice(journeyIdx, 1)
+    const existingIdx = toStep.journeys.findIndex((j) => j.vehicleId === vehicleId)
+    if (existingIdx >= 0) toStep.journeys.splice(existingIdx, 1)
+    toStep.journeys.push(intent)
+    this.pruneAndMerge()
+  }
+
   /** Insert a new JourneyStep after the given index, containing only vehicleId → toTileId. */
   insertJourneyStepAfter(afterIndex: number, vehicleId: number, toTileId: number): void {
     const newStep: JourneyStep = { kind: 'JOURNEY', journeys: [{ vehicleId, toTileId }] }
