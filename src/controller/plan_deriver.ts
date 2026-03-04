@@ -5,8 +5,8 @@ import type {
   DerivedJourneyStep,
   DerivedCargoStep,
   DerivedJourneyIntent,
-  DerivedCargoAction,
   WorldSnapshot,
+  ValidCargoActions,
 } from '../model/types/DerivedPlanState'
 import type { NavApi } from './navigation'
 import type { TileCentersApi } from './layer_0/tile_centers_api'
@@ -15,12 +15,83 @@ function snapshotOf(
   vehiclePositions: Map<number, number>,
   crateOnGround: Map<number, number>,
   vehicleCargo: Map<number, Set<number>>,
+  validCargoActions: ValidCargoActions,
 ): WorldSnapshot {
   return {
     vehiclePositions: new Map(vehiclePositions),
     crateOnGround: new Map(crateOnGround),
     vehicleCargo: new Map([...vehicleCargo.entries()].map(([k, v]) => [k, new Set(v)])),
+    validCargoActions,
   }
+}
+
+function computeValidCargoActions(
+  vehiclePositions: Map<number, number>,
+  crateOnGround: Map<number, number>,
+  vehicleCargo: Map<number, Set<number>>,
+  plan: Plan,
+  navApi: NavApi,
+  tileApi: TileCentersApi,
+): ValidCargoActions {
+  const validLoads: ValidCargoActions['validLoads'] = []
+  const validUnloads: ValidCargoActions['validUnloads'] = []
+  const validTransfers: ValidCargoActions['validTransfers'] = []
+  const validDelivers: ValidCargoActions['validDelivers'] = []
+
+  for (const [crateId] of crateOnGround) {
+    for (const vehicleId of Object.keys(plan.vehicles).map(Number)) {
+      const intent: CargoIntent = { kind: 'LOAD', crateId, vehicleId }
+      if (checkCargoValidity(intent, plan, vehiclePositions, crateOnGround, vehicleCargo, navApi, tileApi).valid) {
+        validLoads.push({ crateId, vehicleId })
+      }
+    }
+  }
+
+  for (const [vehicleId, crates] of vehicleCargo) {
+    const vehicleTile = vehiclePositions.get(vehicleId)
+    if (vehicleTile === undefined) continue
+    const neighbors = navApi.getNeighbors(vehicleTile, 'ALL')
+    for (const crateId of crates) {
+      for (const toTileId of neighbors) {
+        const intent: CargoIntent = { kind: 'UNLOAD', crateId, vehicleId, toTileId }
+        if (checkCargoValidity(intent, plan, vehiclePositions, crateOnGround, vehicleCargo, navApi, tileApi).valid) {
+          validUnloads.push({ crateId, vehicleId, toTileId })
+        }
+      }
+      const crate = plan.crates[crateId]
+      if (crate) {
+        for (const toTileId of neighbors) {
+          const tile = tileApi.getTileById(toTileId)
+          if (tile?.is_land && tile.country_name === crate.destinationCountry) {
+            const intent: CargoIntent = { kind: 'DELIVER', crateId, vehicleId, toTileId }
+            if (checkCargoValidity(intent, plan, vehiclePositions, crateOnGround, vehicleCargo, navApi, tileApi).valid) {
+              validDelivers.push({ crateId, vehicleId, toTileId })
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (const [fromVehicleId, crates] of vehicleCargo) {
+    const fromTile = vehiclePositions.get(fromVehicleId)
+    if (fromTile === undefined) continue
+    const neighbors = navApi.getNeighbors(fromTile, 'ALL')
+    for (const crateId of crates) {
+      for (const [toVehicleId] of vehicleCargo) {
+        if (toVehicleId === fromVehicleId) continue
+        const toTile = vehiclePositions.get(toVehicleId)
+        if (toTile !== undefined && neighbors.includes(toTile)) {
+          const intent: CargoIntent = { kind: 'TRANSFER', crateId, fromVehicleId, toVehicleId }
+          if (checkCargoValidity(intent, plan, vehiclePositions, crateOnGround, vehicleCargo, navApi, tileApi).valid) {
+            validTransfers.push({ crateId, fromVehicleId, toVehicleId })
+          }
+        }
+      }
+    }
+  }
+
+  return { validLoads, validUnloads, validTransfers, validDelivers }
 }
 
 function checkCargoValidity(
@@ -122,11 +193,8 @@ function computeOccupiedTiles(plan: Plan): Set<number> {
     if (step.kind === 'JOURNEY') {
       for (const j of step.journeys) tiles.add(j.toTileId)
     } else {
-      for (const action of step.actions) {
-        if (action.kind === 'UNLOAD' || action.kind === 'DELIVER') {
-          tiles.add(action.toTileId)
-        }
-      }
+      const a = step.action
+      if (a.kind === 'UNLOAD' || a.kind === 'DELIVER') tiles.add(a.toTileId)
     }
   }
   return tiles
@@ -144,7 +212,8 @@ export function derivePlanState(plan: Plan, navApi: NavApi, tileApi: TileCenters
   )
   const deliveredCrates = new Set<number>()
 
-  const initialSnapshot = snapshotOf(vehiclePositions, crateOnGround, vehicleCargo)
+  const initialValid = computeValidCargoActions(vehiclePositions, crateOnGround, vehicleCargo, plan, navApi, tileApi)
+  const initialSnapshot = snapshotOf(vehiclePositions, crateOnGround, vehicleCargo, initialValid)
   const stepSnapshots: WorldSnapshot[] = []
   const derivedSteps: DerivedStep[] = []
   let totalTraveltime = 0
@@ -186,27 +255,23 @@ export function derivePlanState(plan: Plan, navApi: NavApi, tileApi: TileCenters
       }
       derivedSteps.push(journeyStep)
     } else {
-      const derivedActions: DerivedCargoAction[] = []
-
-      for (const intent of step.actions) {
-        const { valid, invalidReason } = checkCargoValidity(
-          intent, plan, vehiclePositions, crateOnGround, vehicleCargo, navApi, tileApi,
-        )
-        if (valid) {
-          applyCargoEffect(intent, crateOnGround, vehicleCargo, deliveredCrates)
-        }
-        derivedActions.push({ intent, valid, invalidReason })
+      const intent = step.action
+      const { valid, invalidReason } = checkCargoValidity(
+        intent, plan, vehiclePositions, crateOnGround, vehicleCargo, navApi, tileApi,
+      )
+      if (valid) {
+        applyCargoEffect(intent, crateOnGround, vehicleCargo, deliveredCrates)
       }
-
       const cargoStep: DerivedCargoStep = {
         kind: 'CARGO',
         stepIndex,
-        actions: derivedActions,
+        action: { intent, valid, invalidReason },
       }
       derivedSteps.push(cargoStep)
     }
 
-    stepSnapshots.push(snapshotOf(vehiclePositions, crateOnGround, vehicleCargo))
+    const valid = computeValidCargoActions(vehiclePositions, crateOnGround, vehicleCargo, plan, navApi, tileApi)
+    stepSnapshots.push(snapshotOf(vehiclePositions, crateOnGround, vehicleCargo, valid))
   }
 
   return {
@@ -217,4 +282,39 @@ export function derivePlanState(plan: Plan, navApi: NavApi, tileApi: TileCenters
     totalTraveltime,
     occupiedTiles: computeOccupiedTiles(plan),
   }
+}
+
+function intentInValidCargoActions(intent: CargoIntent, v: ValidCargoActions): boolean {
+  switch (intent.kind) {
+    case 'LOAD':
+      return v.validLoads.some((x) => x.crateId === intent.crateId && x.vehicleId === intent.vehicleId)
+    case 'UNLOAD':
+      return v.validUnloads.some(
+        (x) => x.crateId === intent.crateId && x.vehicleId === intent.vehicleId && x.toTileId === intent.toTileId,
+      )
+    case 'TRANSFER':
+      return v.validTransfers.some(
+        (x) =>
+          x.crateId === intent.crateId &&
+          x.fromVehicleId === intent.fromVehicleId &&
+          x.toVehicleId === intent.toVehicleId,
+      )
+    case 'DELIVER':
+      return v.validDelivers.some(
+        (x) =>
+          x.crateId === intent.crateId && x.vehicleId === intent.vehicleId && x.toTileId === intent.toTileId,
+      )
+  }
+}
+
+export function findFirstValidInsertionPoint(
+  intent: CargoIntent,
+  derived: DerivedPlanState,
+): number | null {
+  for (let i = 0; i < derived.stepSnapshots.length; i++) {
+    if (intentInValidCargoActions(intent, derived.stepSnapshots[i].validCargoActions)) {
+      return i
+    }
+  }
+  return null
 }

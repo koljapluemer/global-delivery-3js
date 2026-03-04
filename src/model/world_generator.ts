@@ -26,6 +26,7 @@ export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): P
   const boatType = AvailableVehicleTypes['small_boat']
 
   const carTileId = pickRandom(landNodeIds)
+  const carTileId2 = pickRandom(landNodeIds)
   const boatTileId = pickRandom(waterNodeIds)
 
   const usedTiles = new Set<number>([carTileId, boatTileId])
@@ -40,9 +41,16 @@ export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): P
 
   const vehicles: Record<number, Vehicle> = {
     0: {
-      name: 'Car',
+      name: 'Cabriolet',
       vehicleType: carType,
       hue: 70,
+      movementCost: carType.baseMovementCost,
+      capacity: carType.baseCapacity,
+    },
+    2: {
+      name: 'Jeep',
+      vehicleType: carType,
+      hue: 130,
       movementCost: carType.baseMovementCost,
       capacity: carType.baseCapacity,
     },
@@ -67,7 +75,7 @@ export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): P
     vehicles,
     crates,
     initialState: {
-      vehiclePositions: { 0: carTileId, 1: boatTileId },
+      vehiclePositions: { 0: carTileId, 1: boatTileId, 2:carTileId2 },
       cratePositions: Object.fromEntries(crateTileIds.map((id, i) => [i, id])),
     },
     steps: [],

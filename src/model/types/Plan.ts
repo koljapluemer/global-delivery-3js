@@ -24,7 +24,7 @@ export type CargoIntent =
 
 export interface CargoStep {
   kind: 'CARGO'
-  actions: CargoIntent[]
+  action: CargoIntent
 }
 
 export type PlanStep = JourneyStep | CargoStep

@@ -1,9 +1,11 @@
-import { createElement, DollarSign, Star, Clock, Undo2, Redo2 } from 'lucide'
+import { createElement, DollarSign, Star, Clock, Undo2, Redo2, Download } from 'lucide'
 import type { GameState } from '../../../model/types/GameState'
 
 export class HudPanel {
   onUndo: (() => void) | null = null
   onRedo: (() => void) | null = null
+  /** Called when the user requests to download derived snapshots as JSON. */
+  onDownloadSnapshots: (() => void) | null = null
 
   private el: HTMLElement | null = null
 
@@ -74,8 +76,24 @@ export class HudPanel {
     redoBtn.disabled = !canRedo
     redoBtn.addEventListener('click', () => { this.onRedo?.() })
 
+    const downloadSnapshotsBtn = document.createElement('button')
+    downloadSnapshotsBtn.title = 'Download derived snapshots as JSON'
+    downloadSnapshotsBtn.appendChild(createElement(Download, { width: 16, height: 16 }))
+    Object.assign(downloadSnapshotsBtn.style, {
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      color: '#fff',
+      padding: '4px',
+      lineHeight: '0',
+      display: 'flex',
+      alignItems: 'center',
+    })
+    downloadSnapshotsBtn.addEventListener('click', () => { this.onDownloadSnapshots?.() })
+
     center.appendChild(undoBtn)
     center.appendChild(redoBtn)
+    center.appendChild(downloadSnapshotsBtn)
 
     const right = document.createElement('div')
     Object.assign(right.style, { display: 'flex', alignItems: 'center', gap: '0.4rem' })

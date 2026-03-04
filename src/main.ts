@@ -8,7 +8,7 @@ import { NavApi } from './controller/navigation'
 import { generateWorld } from './model/world_generator'
 import { PlanIntentManager } from './controller/plan_intent_manager'
 import { UndoRedoHistory } from './controller/undo_redo'
-import { derivePlanState } from './controller/plan_deriver'
+import { derivePlanState, findFirstValidInsertionPoint } from './controller/plan_deriver'
 import { GameItemRenderer } from './view/game/game_item_renderer'
 import { LabelRenderer } from './view/game/label_renderer'
 import { PlanPanel } from './view/ui/plan_panel/plan_panel'
@@ -64,8 +64,9 @@ let labelRenderer: LabelRenderer | null = null
 let pinPlacementPreview: PinPlacementPreview | null = null
 let crateDropPreview: CrateDropPreview | null = null
 let crateLoadPreview: CrateLoadPreview | null = null
-let lastValidLoadTarget: { vehicleId: number; loadAtStep: number; precedingJourneyStepIndex: number } | null = null
-let lastValidTransferTarget: { vehicleId: number; transferAtStep: number } | null = null
+let lastValidLoadTarget: { vehicleId: number; insertAfterStepIndex: number } | null = null
+let lastValidTransferTarget: { toVehicleId: number; insertAfterStepIndex: number } | null = null
+let lastValidUnloadTarget: { toTileId: number; isDelivery: boolean; insertAfterStepIndex: number } | null = null
 const pinContextMenu = new PinContextMenu()
 pinContextMenu.mount(document.body)
 const crateLoadMenu = new CrateLoadMenu()
@@ -99,6 +100,32 @@ function getVehicleLastTileId(vehicleId: number): number | null {
 function snapshotBefore(stepIndex: number): DerivedPlanState['initialSnapshot'] {
   if (stepIndex <= 0) return derived.initialSnapshot
   return derived.stepSnapshots[stepIndex - 1] ?? derived.initialSnapshot
+}
+
+/** Serialize derived snapshots to a JSON-serializable object and trigger download. */
+function downloadDerivedSnapshots(): void {
+  const snap = (m: ReadonlyMap<number, number>) => Object.fromEntries([...m.entries()].map(([k, v]) => [String(k), v]))
+  const cargo = (m: ReadonlyMap<number, ReadonlySet<number>>) =>
+    Object.fromEntries([...m.entries()].map(([k, v]) => [String(k), [...v]]))
+  const snapshotToJson = (s: DerivedPlanState['initialSnapshot']) => ({
+    vehiclePositions: snap(s.vehiclePositions),
+    crateOnGround: snap(s.crateOnGround),
+    vehicleCargo: cargo(s.vehicleCargo),
+    validCargoActions: s.validCargoActions,
+  })
+  const payload = {
+    initialSnapshot: snapshotToJson(derived.initialSnapshot),
+    stepSnapshots: derived.stepSnapshots.map(snapshotToJson),
+    deliveredCrates: [...derived.deliveredCrates],
+    totalTraveltime: derived.totalTraveltime,
+    occupiedTiles: [...derived.occupiedTiles],
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `derived-snapshots-${Date.now()}.json`
+  a.click()
+  URL.revokeObjectURL(a.href)
 }
 
 // ---------------------------------------------------------------------------
@@ -135,9 +162,9 @@ inspectorPanel.onRemoveJourneyIntent = async (stepIndex, vehicleId) => {
   await rerender()
   inspectorPanel.refresh(intentManager.getPlan(), derived, tileCentersApi)
 }
-inspectorPanel.onRemoveCargoIntent = async (stepIndex, actionIndex) => {
+inspectorPanel.onRemoveCargoIntent = async (stepIndex) => {
   undoHistory.snapshot(intentManager.getPlan())
-  intentManager.removeCargoIntent(stepIndex, actionIndex)
+  intentManager.removeCargoIntent(stepIndex)
   await rerender()
   inspectorPanel.refresh(intentManager.getPlan(), derived, tileCentersApi)
 }
@@ -151,9 +178,9 @@ planPanel.onRemoveJourneyIntent = async (stepIndex, vehicleId) => {
   intentManager.removeJourneyIntent(stepIndex, vehicleId)
   await rerender()
 }
-planPanel.onRemoveCargoIntent = async (stepIndex, actionIndex) => {
+planPanel.onRemoveCargoIntent = async (stepIndex) => {
   undoHistory.snapshot(intentManager.getPlan())
-  intentManager.removeCargoIntent(stepIndex, actionIndex)
+  intentManager.removeCargoIntent(stepIndex)
   await rerender()
 }
 planPanel.onMoveJourneyIntent = async (vehicleId, fromStepIndex, toStepIndex) => {
@@ -161,9 +188,9 @@ planPanel.onMoveJourneyIntent = async (vehicleId, fromStepIndex, toStepIndex) =>
   intentManager.moveJourneyIntent(vehicleId, fromStepIndex, toStepIndex)
   await rerender()
 }
-planPanel.onMoveCargoIntent = async (fromStepIndex, fromActionIndex, toStepIndex, toActionIndex) => {
+planPanel.onMoveCargoStep = async (fromStepIndex, toAfterStepIndex) => {
   undoHistory.snapshot(intentManager.getPlan())
-  intentManager.moveCargoIntent(fromStepIndex, fromActionIndex, toStepIndex, toActionIndex)
+  intentManager.moveCargoStep(fromStepIndex, toAfterStepIndex)
   await rerender()
 }
 
@@ -178,6 +205,7 @@ hudPanel.onRedo = async () => {
   const next = undoHistory.redo(intentManager.getPlan())
   if (next) { intentManager.resetPlan(next); await rerender() }
 }
+hudPanel.onDownloadSnapshots = () => downloadDerivedSnapshots()
 window.addEventListener('keydown', async (e) => {
   if (e.ctrlKey && e.key === 'z') { hudPanel.onUndo?.(); e.preventDefault() }
   if (e.ctrlKey && e.key === 'y') { hudPanel.onRedo?.(); e.preventDefault() }
@@ -263,10 +291,10 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
             pinContextMenu.hide()
             inputModeController.enterCrateDrop(mode.vehicleId, mode.stepIndex, crateId)
           },
-          onRemoveUnload: async (cargoStepIndex, actionIndex) => {
+          onRemoveUnload: async (cargoStepIndex) => {
             labelRenderer?.setPinLabelOffset(mode.vehicleId, mode.stepIndex, 0)
             undoHistory.snapshot(intentManager.getPlan())
-            intentManager.removeCargoIntent(cargoStepIndex, actionIndex)
+            intentManager.removeCargoIntent(cargoStepIndex)
             pinContextMenu.hide()
             await rerender()
             inspectorPanel.refresh(intentManager.getPlan(), derived, tileCentersApi)
@@ -303,9 +331,9 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
 
   if (mode.kind === 'CRATE_DROP') {
     if (lastValidTransferTarget) {
-      const { vehicleId: toVehicleId, transferAtStep } = lastValidTransferTarget
+      const { toVehicleId, insertAfterStepIndex } = lastValidTransferTarget
       undoHistory.snapshot(intentManager.getPlan())
-      intentManager.addCargoIntentAfterJourneyStep(transferAtStep, {
+      intentManager.insertCargoStepAfter(insertAfterStepIndex, {
         kind: 'TRANSFER',
         crateId: mode.crateId,
         fromVehicleId: mode.vehicleId,
@@ -316,37 +344,17 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
       await rerender()
       inspectorPanel.show({ kind: 'VEHICLE', id: toVehicleId }, intentManager.getPlan(), derived, tileCentersApi)
       inputModeController.enterNormal()
-    } else if (lastHoveredTile) {
-      const vehicleTileId = derived.stepSnapshots[mode.stepIndex]?.vehiclePositions.get(mode.vehicleId)
-      const isValid = lastHoveredTile.is_land &&
-        !derived.occupiedTiles.has(lastHoveredTile.tile_id) &&
-        vehicleTileId !== undefined &&
-        navApi.getNeighbors(vehicleTileId, 'ALL').includes(lastHoveredTile.tile_id)
-      if (isValid) {
-        const crate = intentManager.getPlan().crates[mode.crateId]
-        const tile = tileCentersApi.getTileById(lastHoveredTile.tile_id)
-        const isDelivery = crate && tile?.country_name === crate.destinationCountry
-        undoHistory.snapshot(intentManager.getPlan())
-        if (isDelivery) {
-          intentManager.addCargoIntentAfterJourneyStep(mode.stepIndex, {
-            kind: 'DELIVER',
-            crateId: mode.crateId,
-            vehicleId: mode.vehicleId,
-            toTileId: lastHoveredTile.tile_id,
-          })
-        } else {
-          intentManager.addCargoIntentAfterJourneyStep(mode.stepIndex, {
-            kind: 'UNLOAD',
-            crateId: mode.crateId,
-            vehicleId: mode.vehicleId,
-            toTileId: lastHoveredTile.tile_id,
-          })
-        }
-        crateDropPreview?.hide()
-        await rerender()
-        inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
-        inputModeController.enterNormal()
-      }
+    } else if (lastValidUnloadTarget) {
+      const { toTileId, isDelivery, insertAfterStepIndex } = lastValidUnloadTarget
+      undoHistory.snapshot(intentManager.getPlan())
+      intentManager.insertCargoStepAfter(insertAfterStepIndex, isDelivery
+        ? { kind: 'DELIVER', crateId: mode.crateId, vehicleId: mode.vehicleId, toTileId }
+        : { kind: 'UNLOAD', crateId: mode.crateId, vehicleId: mode.vehicleId, toTileId })
+      lastValidUnloadTarget = null
+      crateDropPreview?.hide()
+      await rerender()
+      inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
+      inputModeController.enterNormal()
     }
     return
   }
@@ -354,7 +362,7 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
   if (mode.kind === 'CRATE_LOAD') {
     if (!dragged && lastValidLoadTarget) {
       undoHistory.snapshot(intentManager.getPlan())
-      intentManager.addCargoIntentAfterJourneyStep(lastValidLoadTarget.precedingJourneyStepIndex, {
+      intentManager.insertCargoStepAfter(lastValidLoadTarget.insertAfterStepIndex, {
         kind: 'LOAD',
         crateId: mode.crateId,
         vehicleId: lastValidLoadTarget.vehicleId,
@@ -370,7 +378,7 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
   if (mode.kind === 'PIN_PLACEMENT') {
     if (!lastHoveredTile) return
     undoHistory.snapshot(intentManager.getPlan())
-    intentManager.addJourneyToEarliestStep(mode.vehicleId, lastHoveredTile.tile_id)
+    intentManager.addPinAfterLastVehicleStep(mode.vehicleId, lastHoveredTile.tile_id)
     pinPlacementPreview?.hide()
     await rerender()
     inspectorPanel.show({ kind: 'VEHICLE', id: mode.vehicleId }, intentManager.getPlan(), derived, tileCentersApi)
@@ -403,7 +411,7 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
       })
     } else if (meta.entityType === 'INVALID_INTENT') {
       undoHistory.snapshot(intentManager.getPlan())
-      intentManager.removeCargoIntent(meta.stepIndex!, meta.actionIndex!)
+      intentManager.removeCargoIntent(meta.stepIndex!)
       await rerender()
     } else {
       inspectorPanel.hide()
@@ -425,51 +433,35 @@ renderer.domElement.addEventListener('mousemove', (e) => {
       { entityType?: string; entityId?: number; vehicleId?: number; stepIndex?: number } | undefined
 
     let vehicleId: number | undefined
-    let loadAtStep: number | undefined  // JourneyStep index for PIN hover, or mode.stepIndex for VEHICLE hover
-    let precedingJourneyStepIndex: number = -1  // for addCargoIntentAfterJourneyStep
-
-    if (hitMeta?.entityType === 'VEHICLE') {
+    if (hitMeta?.entityType === 'VEHICLE' && hitMeta.entityId !== undefined) {
       vehicleId = hitMeta.entityId
-      loadAtStep = mode.stepIndex
-      precedingJourneyStepIndex = -1  // load before all journey steps
-    } else if (hitMeta?.entityType === 'PIN' &&
-               hitMeta.stepIndex !== undefined &&
-               hitMeta.stepIndex >= mode.stepIndex) {
+    } else if (hitMeta?.entityType === 'PIN' && hitMeta.vehicleId !== undefined) {
       vehicleId = hitMeta.vehicleId
-      loadAtStep = hitMeta.stepIndex
-      precedingJourneyStepIndex = hitMeta.stepIndex
     }
 
-    // Validate: crate still on ground at the point of loading, vehicle adjacent
-    const precedingSnap = loadAtStep !== undefined ? snapshotBefore(loadAtStep) : null
-    const crateStillThere = precedingSnap !== null && precedingSnap.crateOnGround.has(mode.crateId)
-
-    // Vehicle tile at loadAtStep
-    let vehicleTileAtLoad: number | undefined
-    if (vehicleId !== undefined && loadAtStep !== undefined) {
-      if (hitMeta?.entityType === 'VEHICLE') {
-        // Vehicle body = initial position (or we use the snapshot at mode.stepIndex if 0)
-        vehicleTileAtLoad = snapshotBefore(loadAtStep).vehiclePositions.get(vehicleId)
+    if (vehicleId !== undefined) {
+      const intent = { kind: 'LOAD' as const, crateId: mode.crateId, vehicleId }
+      const insertAfter = findFirstValidInsertionPoint(intent, derived)
+      if (insertAfter !== null) {
+        lastValidLoadTarget = { vehicleId, insertAfterStepIndex: insertAfter }
+        const snap = derived.stepSnapshots[insertAfter]
+        const crateTileAtLoad = snap.crateOnGround.get(mode.crateId)
+        const vehicleTileAtLoad = snap.vehiclePositions.get(vehicleId)
+        gameItemRenderer.setHovered(hits[0].object)
+        if (crateTileAtLoad !== undefined && vehicleTileAtLoad !== undefined) {
+          const hue = intentManager.getPlan().vehicles[vehicleId]?.hue ?? 0
+          crateLoadPreview?.update(crateTileAtLoad, vehicleTileAtLoad, hue, globeCenter, tileCentersApi)
+        } else {
+          crateLoadPreview?.hide()
+        }
       } else {
-        // PIN: vehicle is at the destination of that journey step
-        vehicleTileAtLoad = derived.stepSnapshots[loadAtStep]?.vehiclePositions.get(vehicleId)
+        lastValidLoadTarget = null
+        gameItemRenderer.setHovered(null)
+        crateLoadPreview?.hide()
       }
-    }
-
-    const valid = vehicleId !== undefined &&
-      loadAtStep !== undefined &&
-      crateStillThere &&
-      vehicleTileAtLoad !== undefined &&
-      navApi.getNeighbors(mode.crateTileId, 'ALL').includes(vehicleTileAtLoad)
-
-    lastValidLoadTarget = valid
-      ? { vehicleId: vehicleId!, loadAtStep: loadAtStep!, precedingJourneyStepIndex }
-      : null
-    gameItemRenderer.setHovered(valid ? hits[0].object : null)
-    if (valid) {
-      const hue = intentManager.getPlan().vehicles[vehicleId!]?.hue ?? 0
-      crateLoadPreview?.update(mode.crateTileId, vehicleTileAtLoad!, hue, globeCenter, tileCentersApi)
     } else {
+      lastValidLoadTarget = null
+      gameItemRenderer.setHovered(null)
       crateLoadPreview?.hide()
     }
     return
@@ -479,28 +471,35 @@ renderer.domElement.addEventListener('mousemove', (e) => {
     const hitMeta = hits[0]?.object?.userData as
       { entityType?: string; entityId?: number; vehicleId?: number; stepIndex?: number } | undefined
 
-    let transferVehicleId: number | undefined
-    let transferAtStep = mode.stepIndex
-    if (hitMeta?.entityType === 'VEHICLE' && hitMeta.entityId !== mode.vehicleId) {
-      transferVehicleId = hitMeta.entityId
-    } else if (hitMeta?.entityType === 'PIN' && hitMeta.vehicleId !== mode.vehicleId &&
-               hitMeta.stepIndex !== undefined && hitMeta.stepIndex >= mode.stepIndex) {
-      transferVehicleId = hitMeta.vehicleId
-      transferAtStep = hitMeta.stepIndex
+    let toVehicleId: number | undefined
+    if (hitMeta?.entityType === 'VEHICLE' && hitMeta.entityId !== mode.vehicleId && hitMeta.entityId !== undefined) {
+      toVehicleId = hitMeta.entityId
+    } else if (hitMeta?.entityType === 'PIN' && hitMeta.vehicleId !== mode.vehicleId && hitMeta.vehicleId !== undefined) {
+      toVehicleId = hitMeta.vehicleId
     }
 
-    if (transferVehicleId !== undefined) {
-      const fromSnap = derived.stepSnapshots[transferAtStep]
-      const fromTile = fromSnap?.vehiclePositions.get(mode.vehicleId)
-      const toTile = fromSnap?.vehiclePositions.get(transferVehicleId)
-      // Check crate is on source vehicle at transferAtStep (use snapshot before)
-      const snapBefore = snapshotBefore(transferAtStep)
-      const crateOnFromVehicle = snapBefore.vehicleCargo.get(mode.vehicleId)?.has(mode.crateId) ?? false
-      const valid = fromTile !== undefined && toTile !== undefined && crateOnFromVehicle &&
-        navApi.getNeighbors(fromTile, 'ALL').includes(toTile)
-
-      lastValidTransferTarget = valid ? { vehicleId: transferVehicleId, transferAtStep } : null
-      gameItemRenderer.setHovered(valid ? hits[0].object : null)
+    if (toVehicleId !== undefined) {
+      const intent = {
+        kind: 'TRANSFER' as const,
+        crateId: mode.crateId,
+        fromVehicleId: mode.vehicleId,
+        toVehicleId,
+      }
+      const insertAfter = findFirstValidInsertionPoint(intent, derived)
+      if (insertAfter !== null) {
+        lastValidTransferTarget = { toVehicleId, insertAfterStepIndex: insertAfter }
+        const snap = derived.stepSnapshots[insertAfter]
+        const fromTile = snap.vehiclePositions.get(mode.vehicleId)
+        const toTile = snap.vehiclePositions.get(toVehicleId)
+        gameItemRenderer.setHovered(hits[0].object)
+        if (fromTile !== undefined && toTile !== undefined) {
+          const hue = intentManager.getPlan().vehicles[mode.vehicleId]?.hue ?? 0
+          crateDropPreview?.updateTransfer(fromTile, toTile, hue, globeCenter, tileCentersApi)
+        }
+      } else {
+        lastValidTransferTarget = null
+        gameItemRenderer.setHovered(null)
+      }
     } else {
       lastValidTransferTarget = null
       gameItemRenderer.setHovered(null)
@@ -539,17 +538,30 @@ globeScene.load().then(({ boundingSphere }) => {
 
     if (mode.kind === 'CRATE_DROP') {
       pinPlacementPreview?.hide()
-      if (lastValidTransferTarget !== null) { crateDropPreview?.hide(); return }
-      const vehicleTileId = derived.stepSnapshots[mode.stepIndex]?.vehiclePositions.get(mode.vehicleId)
-      if (vehicleTileId === undefined) return
-      const isValid = tile.is_land &&
-        !derived.occupiedTiles.has(tile.tile_id) &&
-        navApi.getNeighbors(vehicleTileId, 'ALL').includes(tile.tile_id)
-      crateDropPreview?.update(
-        tile, vehicleTileId, isValid,
-        intentManager.getPlan().vehicles[mode.vehicleId]?.hue ?? 0,
-        globeCenter, tileCentersApi,
-      )
+      if (lastValidTransferTarget !== null) return  // keep transfer preview when hovering pin/vehicle
+      const crate = intentManager.getPlan().crates[mode.crateId]
+      const isDelivery = crate && tile.country_name === crate.destinationCountry
+      const intent = isDelivery
+        ? { kind: 'DELIVER' as const, crateId: mode.crateId, vehicleId: mode.vehicleId, toTileId: tile.tile_id }
+        : { kind: 'UNLOAD' as const, crateId: mode.crateId, vehicleId: mode.vehicleId, toTileId: tile.tile_id }
+      {
+        const insertAfter = findFirstValidInsertionPoint(intent, derived)
+        if (insertAfter !== null) {
+          lastValidUnloadTarget = { toTileId: tile.tile_id, isDelivery, insertAfterStepIndex: insertAfter }
+          const snap = derived.stepSnapshots[insertAfter]
+          const vehicleTileId = snap.vehiclePositions.get(mode.vehicleId)
+          if (vehicleTileId !== undefined) {
+            crateDropPreview?.update(
+              tile, vehicleTileId, true,
+              intentManager.getPlan().vehicles[mode.vehicleId]?.hue ?? 0,
+              globeCenter, tileCentersApi,
+            )
+          }
+        } else {
+          lastValidUnloadTarget = null
+          crateDropPreview?.hide()
+        }
+      }
       return
     }
 

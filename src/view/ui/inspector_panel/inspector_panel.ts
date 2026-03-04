@@ -12,7 +12,7 @@ export class InspectorPanel {
   /** Called when the user removes a journey intent from a step. */
   onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
   /** Called when the user removes a cargo intent from a step. */
-  onRemoveCargoIntent: ((stepIndex: number, actionIndex: number) => void) | null = null
+  onRemoveCargoIntent: ((stepIndex: number) => void) | null = null
   /** Called when the user initiates an unload/transfer from a journey step. */
   onUnloadFromStep: ((vehicleId: number, stepIndex: number, crateId: number) => void) | null = null
 
@@ -162,7 +162,7 @@ export class InspectorPanel {
         if (entry.kind === 'JOURNEY') {
           this.onRemoveJourneyIntent?.(entry.stepIndex, entry.vehicleId)
         } else {
-          this.onRemoveCargoIntent?.(entry.stepIndex, entry.actionIndex)
+          this.onRemoveCargoIntent?.(entry.stepIndex)
         }
       })
 

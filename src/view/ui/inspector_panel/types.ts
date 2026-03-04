@@ -10,7 +10,6 @@ export interface JourneyStepEntry {
 export interface CargoStepEntry {
   kind: 'CARGO'
   stepIndex: number
-  actionIndex: number
   stepLabel: string
   description: string
   valid: boolean

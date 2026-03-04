@@ -6,7 +6,6 @@ import type {
   CrateInspection,
   InspectionContent,
   JourneyStepEntry,
-  CargoStepEntry,
   StepEntry,
   VehicleInspection,
 } from './types'
@@ -50,38 +49,34 @@ function inspectVehicle(
       }
       stepEntries.push(entry)
     } else {
-      for (let actionIndex = 0; actionIndex < step.actions.length; actionIndex++) {
-        const { intent, valid } = step.actions[actionIndex]
-        let description: string | null = null
+      const { intent, valid } = step.action
+      let description: string | null = null
 
-        if (intent.kind === 'LOAD' && intent.vehicleId === id) {
-          const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
-          description = `Loads Crate→${dest}`
-        } else if (intent.kind === 'UNLOAD' && intent.vehicleId === id) {
-          const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
-          const country = resolveCountry(intent.toTileId, tileApi) ?? 'open sea'
-          description = `Unloads Crate→${dest} in ${country}`
-        } else if (intent.kind === 'DELIVER' && intent.vehicleId === id) {
-          const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
-          description = `Delivers Crate→${dest}`
-        } else if (intent.kind === 'TRANSFER' && (intent.fromVehicleId === id || intent.toVehicleId === id)) {
-          const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
-          const fromName = plan.vehicles[intent.fromVehicleId]?.name ?? '?'
-          const toName = plan.vehicles[intent.toVehicleId]?.name ?? '?'
-          description = `${fromName} transfers Crate→${dest} to ${toName}`
-        }
+      if (intent.kind === 'LOAD' && intent.vehicleId === id) {
+        const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
+        description = `Loads Crate→${dest}`
+      } else if (intent.kind === 'UNLOAD' && intent.vehicleId === id) {
+        const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
+        const country = resolveCountry(intent.toTileId, tileApi) ?? 'open sea'
+        description = `Unloads Crate→${dest} in ${country}`
+      } else if (intent.kind === 'DELIVER' && intent.vehicleId === id) {
+        const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
+        description = `Delivers Crate→${dest}`
+      } else if (intent.kind === 'TRANSFER' && (intent.fromVehicleId === id || intent.toVehicleId === id)) {
+        const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
+        const fromName = plan.vehicles[intent.fromVehicleId]?.name ?? '?'
+        const toName = plan.vehicles[intent.toVehicleId]?.name ?? '?'
+        description = `${fromName} transfers Crate→${dest} to ${toName}`
+      }
 
-        if (description !== null) {
-          const entry: CargoStepEntry = {
-            kind: 'CARGO',
-            stepIndex: step.stepIndex,
-            actionIndex,
-            stepLabel: `#${step.stepIndex}`,
-            description,
-            valid,
-          }
-          stepEntries.push(entry)
-        }
+      if (description !== null) {
+        stepEntries.push({
+          kind: 'CARGO',
+          stepIndex: step.stepIndex,
+          stepLabel: `#${step.stepIndex}`,
+          description,
+          valid,
+        })
       }
     }
   }
@@ -104,37 +99,33 @@ function inspectCrate(
 
   for (const step of derived.steps) {
     if (step.kind !== 'CARGO') continue
-    for (let actionIndex = 0; actionIndex < step.actions.length; actionIndex++) {
-      const { intent, valid } = step.actions[actionIndex]
-      let description: string | null = null
+    const { intent, valid } = step.action
+    let description: string | null = null
 
-      if (intent.kind === 'LOAD' && intent.crateId === id) {
-        const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
-        description = `Loaded onto ${vehicleName}`
-      } else if (intent.kind === 'UNLOAD' && intent.crateId === id) {
-        const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
-        const country = resolveCountry(intent.toTileId, tileApi) ?? 'open sea'
-        description = `Unloaded in ${country} by ${vehicleName}`
-      } else if (intent.kind === 'DELIVER' && intent.crateId === id) {
-        const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
-        description = `Delivered by ${vehicleName}`
-      } else if (intent.kind === 'TRANSFER' && intent.crateId === id) {
-        const fromName = plan.vehicles[intent.fromVehicleId]?.name ?? '?'
-        const toName = plan.vehicles[intent.toVehicleId]?.name ?? '?'
-        description = `Transferred from ${fromName} to ${toName}`
-      }
+    if (intent.kind === 'LOAD' && intent.crateId === id) {
+      const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
+      description = `Loaded onto ${vehicleName}`
+    } else if (intent.kind === 'UNLOAD' && intent.crateId === id) {
+      const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
+      const country = resolveCountry(intent.toTileId, tileApi) ?? 'open sea'
+      description = `Unloaded in ${country} by ${vehicleName}`
+    } else if (intent.kind === 'DELIVER' && intent.crateId === id) {
+      const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
+      description = `Delivered by ${vehicleName}`
+    } else if (intent.kind === 'TRANSFER' && intent.crateId === id) {
+      const fromName = plan.vehicles[intent.fromVehicleId]?.name ?? '?'
+      const toName = plan.vehicles[intent.toVehicleId]?.name ?? '?'
+      description = `Transferred from ${fromName} to ${toName}`
+    }
 
-      if (description !== null) {
-        const entry: CargoStepEntry = {
-          kind: 'CARGO',
-          stepIndex: step.stepIndex,
-          actionIndex,
-          stepLabel: `#${step.stepIndex}`,
-          description,
-          valid,
-        }
-        stepEntries.push(entry)
-      }
+    if (description !== null) {
+      stepEntries.push({
+        kind: 'CARGO',
+        stepIndex: step.stepIndex,
+        stepLabel: `#${step.stepIndex}`,
+        description,
+        valid,
+      })
     }
   }
 

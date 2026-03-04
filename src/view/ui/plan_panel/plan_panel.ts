@@ -5,9 +5,9 @@ import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_ap
 
 export class PlanPanel {
   onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
-  onRemoveCargoIntent: ((stepIndex: number, actionIndex: number) => void) | null = null
+  onRemoveCargoIntent: ((stepIndex: number) => void) | null = null
   onMoveJourneyIntent: ((vehicleId: number, fromStepIndex: number, toStepIndex: number | 'before-all' | 'after-all') => void) | null = null
-  onMoveCargoIntent: ((fromStepIndex: number, fromActionIndex: number, toStepIndex: number, toActionIndex: number) => void) | null = null
+  onMoveCargoStep: ((fromStepIndex: number, toAfterStepIndex: number) => void) | null = null
 
   private aside: HTMLElement | null = null
   private tileApi: TileCentersApi | null = null
@@ -52,9 +52,7 @@ export class PlanPanel {
         this.aside.appendChild(this.buildJourneySection(step as DerivedJourneyStep, plan))
       } else {
         const cargoStep = step as DerivedCargoStep
-        if (cargoStep.actions.length > 0) {
-          this.aside.appendChild(this.buildCargoSection(cargoStep, plan))
-        }
+        this.aside.appendChild(this.buildCargoSection(cargoStep, plan))
       }
     }
 
@@ -168,25 +166,14 @@ export class PlanPanel {
       paddingLeft: '8px',
     })
 
-    // Drop zone before the first action
-    section.appendChild(this.createCargoDropZone(step.stepIndex, 0))
-
-    for (let actionIndex = 0; actionIndex < step.actions.length; actionIndex++) {
-      const action = step.actions[actionIndex]
-      section.appendChild(this.buildCargoCard(action, step.stepIndex, actionIndex, plan))
-      // Drop zone after each action
-      section.appendChild(this.createCargoDropZone(step.stepIndex, actionIndex + 1))
-    }
+    section.appendChild(this.createCargoDropZone(step.stepIndex - 1))
+    section.appendChild(this.buildCargoCard(step.action, step.stepIndex, plan))
+    section.appendChild(this.createCargoDropZone(step.stepIndex))
 
     return section
   }
 
-  private buildCargoCard(
-    action: DerivedCargoAction,
-    stepIndex: number,
-    actionIndex: number,
-    plan: Plan,
-  ): HTMLElement {
+  private buildCargoCard(action: DerivedCargoAction, stepIndex: number, plan: Plan): HTMLElement {
     const card = document.createElement('div')
     Object.assign(card.style, {
       background: action.valid ? 'rgba(255,255,255,0.07)' : 'rgba(255,80,80,0.15)',
@@ -202,7 +189,6 @@ export class PlanPanel {
     })
     card.draggable = true
     card.dataset.stepIndex = String(stepIndex)
-    card.dataset.actionIndex = String(actionIndex)
 
     const text = document.createElement('span')
     text.textContent = this.describeCargoIntent(action.intent, plan)
@@ -232,13 +218,13 @@ export class PlanPanel {
     removeBtn.appendChild(createElement(Trash2, { width: 12, height: 12 }))
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation()
-      this.onRemoveCargoIntent?.(stepIndex, actionIndex)
+      this.onRemoveCargoIntent?.(stepIndex)
     })
     card.appendChild(removeBtn)
 
     card.addEventListener('dragstart', (e) => {
       if (!e.dataTransfer) return
-      e.dataTransfer.setData('application/cargo-intent', JSON.stringify({ fromStepIndex: stepIndex, fromActionIndex: actionIndex }))
+      e.dataTransfer.setData('application/cargo-intent', JSON.stringify({ fromStepIndex: stepIndex }))
       e.dataTransfer.effectAllowed = 'move'
     })
 
@@ -277,14 +263,14 @@ export class PlanPanel {
       } else if (afterStepIndex === 'after-all') {
         this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, 'after-all')
       } else {
-        this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, afterStepIndex + 1)
+        this.onMoveJourneyIntent?.(vehicleId, fromStepIndex, afterStepIndex)
       }
     })
 
     return zone
   }
 
-  private createCargoDropZone(targetStepIndex: number, targetActionIndex: number): HTMLElement {
+  private createCargoDropZone(toAfterStepIndex: number): HTMLElement {
     const zone = document.createElement('div')
     Object.assign(zone.style, {
       height: '12px',
@@ -310,8 +296,8 @@ export class PlanPanel {
       if (!e.dataTransfer) return
       const raw = e.dataTransfer.getData('application/cargo-intent')
       if (!raw) return
-      const { fromStepIndex, fromActionIndex } = JSON.parse(raw) as { fromStepIndex: number; fromActionIndex: number }
-      this.onMoveCargoIntent?.(fromStepIndex, fromActionIndex, targetStepIndex, targetActionIndex)
+      const { fromStepIndex } = JSON.parse(raw) as { fromStepIndex: number }
+      this.onMoveCargoStep?.(fromStepIndex, toAfterStepIndex)
     })
 
     return zone

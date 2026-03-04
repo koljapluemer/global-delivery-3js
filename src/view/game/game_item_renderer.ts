@@ -276,21 +276,17 @@ export class GameItemRenderer {
           ? derived.stepSnapshots[cargoStep.stepIndex - 1]
           : derived.initialSnapshot
 
-      for (let actionIndex = 0; actionIndex < cargoStep.actions.length; actionIndex++) {
-        const { intent, valid, invalidReason } = cargoStep.actions[actionIndex]
+      const { intent, valid, invalidReason } = cargoStep.action
 
-        if (!valid) {
-          // Invalid intent: render bubble sprite at relevant tile
-          const relevantTileId = this.getInvalidIntentTileId(intent, precedingSnapshot)
-          if (relevantTileId !== undefined) {
-            await this.renderInvalidIntentBubble(
-              relevantTileId, cargoStep.stepIndex, actionIndex,
-              invalidReason ?? 'Invalid', tileApi, globeCenter,
-            )
-          }
-          continue
+      if (!valid) {
+        const relevantTileId = this.getInvalidIntentTileId(intent, precedingSnapshot)
+        if (relevantTileId !== undefined) {
+          await this.renderInvalidIntentBubble(
+            relevantTileId, cargoStep.stepIndex,
+            invalidReason ?? 'Invalid', tileApi, globeCenter,
+          )
         }
-
+      } else {
         switch (intent.kind) {
           case 'LOAD': {
             const crateTileId = precedingSnapshot.crateOnGround.get(intent.crateId)
@@ -326,9 +322,7 @@ export class GameItemRenderer {
             const toTileId = precedingSnapshot.vehiclePositions.get(intent.toVehicleId)
             const fromVehicle = plan.vehicles[intent.fromVehicleId]
             if (fromTileId !== undefined && toTileId !== undefined && fromVehicle) {
-              // Render arrow in both directions (bidirectional transfer)
               await this.renderCargoArrow(fromTileId, toTileId, fromVehicle.hue, tileApi, globeCenter)
-              await this.renderCargoArrow(toTileId, fromTileId, fromVehicle.hue, tileApi, globeCenter)
             }
             break
           }
@@ -435,7 +429,6 @@ export class GameItemRenderer {
   private async renderInvalidIntentBubble(
     tileId: number,
     stepIndex: number,
-    actionIndex: number,
     _reason: string,
     tileApi: TileCentersApi,
     globeCenter: THREE.Vector3,
@@ -451,7 +444,7 @@ export class GameItemRenderer {
     const sprite = new THREE.Sprite(spriteMat)
     sprite.scale.setScalar(INVALID_BUBBLE_SCALE)
     sprite.position.copy(pos).addScaledVector(outwardNormal, 0.03)
-    const meta = { entityType: 'INVALID_INTENT', stepIndex, actionIndex }
+    const meta = { entityType: 'INVALID_INTENT', stepIndex }
     sprite.userData = meta
     this.scene.add(sprite)
     this.objects.push(sprite)

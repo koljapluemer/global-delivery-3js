@@ -21,15 +21,23 @@ export interface DerivedCargoAction {
 export interface DerivedCargoStep {
   kind: 'CARGO'
   stepIndex: number
-  actions: DerivedCargoAction[]
+  action: DerivedCargoAction
 }
 
 export type DerivedStep = DerivedJourneyStep | DerivedCargoStep
+
+export interface ValidCargoActions {
+  validLoads: Array<{ crateId: number; vehicleId: number }>
+  validUnloads: Array<{ crateId: number; vehicleId: number; toTileId: number }>
+  validTransfers: Array<{ crateId: number; fromVehicleId: number; toVehicleId: number }>
+  validDelivers: Array<{ crateId: number; vehicleId: number; toTileId: number }>
+}
 
 export interface WorldSnapshot {
   vehiclePositions: ReadonlyMap<number, number>
   crateOnGround: ReadonlyMap<number, number>
   vehicleCargo: ReadonlyMap<number, ReadonlySet<number>>
+  validCargoActions: ValidCargoActions
 }
 
 export interface DerivedPlanState {
