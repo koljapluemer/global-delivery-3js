@@ -275,3 +275,23 @@ export function findFirstValidInsertionPoint(
   }
   return null
 }
+
+/** Returns the last tile the vehicle is headed to (or its initial position). */
+export function getVehicleLastTileId(plan: Plan, vehicleId: number): number | null {
+  for (let i = plan.steps.length - 1; i >= 0; i--) {
+    const step = plan.steps[i]
+    if (step.kind !== 'JOURNEY') continue
+    const j = step.journeys.find((jj) => jj.vehicleId === vehicleId)
+    if (j) return j.toTileId
+  }
+  return plan.initialState.vehiclePositions[vehicleId] ?? null
+}
+
+/** Get the snapshot just before a given step index (or initialSnapshot if stepIndex <= 0). */
+export function snapshotBefore(
+  derived: DerivedPlanState,
+  stepIndex: number,
+): DerivedPlanState['initialSnapshot'] {
+  if (stepIndex <= 0) return derived.initialSnapshot
+  return derived.stepSnapshots[stepIndex - 1] ?? derived.initialSnapshot
+}

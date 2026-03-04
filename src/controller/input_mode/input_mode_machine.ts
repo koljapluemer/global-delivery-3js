@@ -152,3 +152,9 @@ export const inputModeMachine = createMachine({
     },
   },
 })
+
+/** Resolve XState v5 snapshot value to a string (root state name). */
+export function inputStateValue(snapshot: { value: unknown }): string {
+  const v = snapshot.value
+  return typeof v === 'object' && v !== null && 'value' in v ? (v as { value: string }).value : String(v)
+}
