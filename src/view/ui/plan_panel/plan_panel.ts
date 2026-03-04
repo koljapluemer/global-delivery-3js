@@ -13,6 +13,14 @@ const DROP_ZONE_STYLE: Record<string, string> = {
   boxSizing: 'border-box',
 }
 
+const DROP_ZONE_HIDDEN = { display: 'none' as const }
+
+/** Single source of truth for journey card normal state. */
+const JOURNEY_CARD_DEFAULT_STYLE: Record<string, string> = {
+  background: 'rgba(255,255,255,0.08)',
+  border: 'none',
+}
+
 export class PlanPanel {
   onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
   onRemoveCargoIntent: ((stepIndex: number) => void) | null = null
@@ -27,6 +35,8 @@ export class PlanPanel {
   private monitorCleanup: (() => void) | null = null
   private currentPlan: Plan | null = null
   private currentDerived: DerivedPlanState | null = null
+  /** True while a drag is in progress; prevents update() from replacing DOM and detaching drop targets. */
+  private isDragging = false
 
   mount(container: HTMLElement, tileApi: TileCentersApi): void {
     const aside = document.createElement('aside')
@@ -49,6 +59,7 @@ export class PlanPanel {
 
     this.monitorCleanup = monitorForElements({
       onDragStart: ({ source }) => {
+        this.isDragging = true
         const data = source.data as { type: string; vehicleId?: number; fromStepIndex?: number }
         if (data.type === 'journey' && data.vehicleId !== undefined && data.fromStepIndex !== undefined) {
           this.showDropTargets('journey', data.vehicleId, data.fromStepIndex)
@@ -56,7 +67,10 @@ export class PlanPanel {
           this.showDropTargets('cargo', undefined, data.fromStepIndex)
         }
       },
-      onDrop: () => this.hideDropTargets(),
+      onDrop: () => {
+        this.isDragging = false
+        this.hideDropTargets()
+      },
     })
   }
 
@@ -70,11 +84,14 @@ export class PlanPanel {
 
   update(plan: Plan, derived: DerivedPlanState): void {
     if (!this.aside || !this.tileApi) return
+    if (this.isDragging) return
     this.currentPlan = plan
     this.currentDerived = derived
 
     for (const c of this.draggableCleanups) c()
     this.draggableCleanups = []
+    for (const c of this.dropTargetCleanups) c()
+    this.dropTargetCleanups = []
 
     this.aside.innerHTML = ''
 
@@ -86,16 +103,32 @@ export class PlanPanel {
       return
     }
 
-    for (const step of derived.steps) {
+    const steps = derived.steps
+    for (let i = 0; i < steps.length; i++) {
+      if (i === 0) this.aside.appendChild(this.createGhostZone('before-all'))
+      const step = steps[i]
       if (step.kind === 'JOURNEY') {
         this.aside.appendChild(this.buildJourneySection(step as DerivedJourneyStep, plan))
       } else {
-        const cargoStep = step as DerivedCargoStep
-        this.aside.appendChild(this.buildCargoSection(cargoStep, plan))
+        this.aside.appendChild(this.buildCargoSection(step as DerivedCargoStep, plan))
       }
+      this.aside.appendChild(this.createGhostZone(i))
     }
+    this.aside.appendChild(this.createGhostZone('after-all'))
 
     this.registerDraggables()
+    this.registerDropTargets()
+  }
+
+  /** Create a ghost drop zone (between steps / before first / after last). Always in DOM, hidden by default. */
+  private createGhostZone(afterStepIndex: number | 'before-all' | 'after-all'): HTMLElement {
+    const zone = document.createElement('div')
+    Object.assign(zone.style, { ...DROP_ZONE_STYLE, ...DROP_ZONE_HIDDEN })
+    zone.className = 'plan-panel-drop-zone'
+    zone.dataset.dropType = 'ghost'
+    zone.dataset.afterStepIndex =
+      afterStepIndex === 'before-all' ? 'before' : afterStepIndex === 'after-all' ? 'after' : String(afterStepIndex)
+    return zone
   }
 
   private registerDraggables(): void {
@@ -121,122 +154,81 @@ export class PlanPanel {
     })
   }
 
-  private showDropTargets(
-    dragType: 'journey' | 'cargo',
-    vehicleId?: number,
-    _fromStepIndex?: number,
-  ): void {
-    if (!this.aside || !this.currentPlan || !this.currentDerived) return
-    const sections = this.aside.querySelectorAll<HTMLElement>('[data-step-index]')
+  private registerDropTargets(): void {
+    if (!this.aside || !this.currentDerived) return
+    for (const c of this.dropTargetCleanups) c()
+    this.dropTargetCleanups = []
     const steps = this.currentDerived.steps
-    const cleanups: Array<() => void> = []
-
-    const createGhostZone = (
-      afterStepIndex: number | 'before-all' | 'after-all',
-    ): HTMLElement => {
-      const zone = document.createElement('div')
-      Object.assign(zone.style, DROP_ZONE_STYLE)
-      zone.className = 'plan-panel-drop-zone'
-      zone.dataset.ghost = '1'
-      zone.dataset.afterStepIndex =
-        afterStepIndex === 'before-all'
-          ? 'before'
-          : afterStepIndex === 'after-all'
-            ? 'after'
-            : String(afterStepIndex)
-
-      const cleanup = dropTargetForElements({
-        element: zone,
-        getData: () => ({ type: 'ghost', afterStepIndex }),
-        canDrop: ({ source }) => {
-          const d = source.data as { type: string }
-          if (dragType === 'journey') return d.type === 'journey'
-          return d.type === 'cargo'
-        },
-        onDrop: ({ source }) => {
-          const d = source.data as { type: string; vehicleId?: number; fromStepIndex?: number }
-          if (d.type === 'journey' && d.vehicleId !== undefined && d.fromStepIndex !== undefined) {
-            if (afterStepIndex === 'before-all') {
-              this.onMoveJourneyIntent?.(d.vehicleId, d.fromStepIndex, 'before-all')
-            } else if (afterStepIndex === 'after-all') {
-              this.onMoveJourneyIntent?.(d.vehicleId, d.fromStepIndex, 'after-all')
-            } else {
-              this.onMoveJourneyIntent?.(d.vehicleId, d.fromStepIndex, afterStepIndex)
-            }
-          } else if (d.type === 'cargo' && d.fromStepIndex !== undefined) {
-            const toAfter =
-              afterStepIndex === 'before-all'
-                ? -1
-                : afterStepIndex === 'after-all'
-                  ? steps.length - 1
-                  : afterStepIndex
-            this.onMoveCargoStep?.(d.fromStepIndex, toAfter)
-          }
-        },
-      })
-      cleanups.push(cleanup)
-      return zone
-    }
-
-    for (let i = 0; i <= sections.length; i++) {
-      const after: number | 'before-all' | 'after-all' =
-        i === 0 ? 'before-all' : i === sections.length ? 'after-all' : i - 1
-      const zone = createGhostZone(after)
-      if (i < sections.length) {
-        this.aside.insertBefore(zone, sections[i])
-      } else {
-        this.aside.appendChild(zone)
-      }
-    }
-
-    if (dragType === 'journey' && vehicleId !== undefined) {
-      const journeyCards = this.aside.querySelectorAll<HTMLElement>('[data-draggable="journey"]')
-      journeyCards.forEach((card) => {
-        const cardStepIndex = Number(card.dataset.stepIndex)
-        const cardVehicleId = Number(card.dataset.vehicleId)
-        const isReplace = cardVehicleId === vehicleId
+    const zones = this.aside.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
+    zones.forEach((zone) => {
+      const dropType = zone.dataset.dropType
+      if (dropType === 'ghost') {
+        const afterRaw = zone.dataset.afterStepIndex
+        const afterStepIndex: number | 'before-all' | 'after-all' =
+          afterRaw === 'before' ? 'before-all' : afterRaw === 'after' ? 'after-all' : Number(afterRaw)
         const cleanup = dropTargetForElements({
-          element: card,
-          getData: () => ({ type: 'in-step', stepIndex: cardStepIndex }),
-          canDrop: ({ source }) => {
-            const d = source.data as { type: string; vehicleId?: number }
-            return d.type === 'journey' && d.vehicleId === vehicleId
-          },
-          onDropTargetChange: ({ location, self }) => {
-            if (isReplace) {
-              const isOver = location.current.dropTargets.some((dt) => dt.element === self.element)
-              card.style.background = isOver ? 'rgba(255,80,80,0.35)' : 'rgba(255,255,255,0.08)'
-              card.style.border = isOver ? '1px dashed rgba(255,255,255,0.6)' : 'none'
-            }
-          },
+          element: zone,
+          getData: () => ({ type: 'ghost', afterStepIndex }),
+          canDrop: ({ source }) => (source.data as { type: string }).type === 'journey' || (source.data as { type: string }).type === 'cargo',
           onDrop: ({ source }) => {
-            const d = source.data as { vehicleId?: number; fromStepIndex?: number }
-            if (d.vehicleId !== undefined && d.fromStepIndex !== undefined) {
-              this.onMoveJourneyIntentIntoStep?.(d.vehicleId, d.fromStepIndex, cardStepIndex)
+            const d = source.data as { type: string; vehicleId?: number; fromStepIndex?: number }
+            if (d.type === 'journey' && d.vehicleId !== undefined && d.fromStepIndex !== undefined) {
+              if (afterStepIndex === 'before-all') {
+                this.onMoveJourneyIntent?.(d.vehicleId, d.fromStepIndex, 'before-all')
+              } else if (afterStepIndex === 'after-all') {
+                this.onMoveJourneyIntent?.(d.vehicleId, d.fromStepIndex, 'after-all')
+              } else {
+                this.onMoveJourneyIntent?.(d.vehicleId, d.fromStepIndex, afterStepIndex)
+              }
+            } else if (d.type === 'cargo' && d.fromStepIndex !== undefined) {
+              const toAfter =
+                afterStepIndex === 'before-all' ? -1 : afterStepIndex === 'after-all' ? steps.length - 1 : afterStepIndex
+              this.onMoveCargoStep?.(d.fromStepIndex, toAfter)
             }
-            card.style.background = ''
-            card.style.border = ''
           },
         })
-        cleanups.push(cleanup)
-      })
-    }
+        this.dropTargetCleanups.push(cleanup)
+      } else if (dropType === 'in-step') {
+        const stepIndex = Number(zone.dataset.stepIndex)
+        const cleanup = dropTargetForElements({
+          element: zone,
+          getData: () => ({ type: 'in-step', stepIndex }),
+          canDrop: ({ source }) => (source.data as { type: string }).type === 'journey',
+          onDrop: ({ source }) => {
+            const d = source.data as { type: string; vehicleId?: number; fromStepIndex?: number }
+            if (d.type === 'journey' && d.vehicleId !== undefined && d.fromStepIndex !== undefined) {
+              this.onMoveJourneyIntentIntoStep?.(d.vehicleId, d.fromStepIndex, stepIndex)
+            }
+          },
+        })
+        this.dropTargetCleanups.push(cleanup)
+      }
+    })
+  }
 
-    this.dropTargetCleanups = cleanups
+  private showDropTargets(dragType: 'journey' | 'cargo', _vehicleId?: number, _fromStepIndex?: number): void {
+    if (!this.aside) return
+    const zones = this.aside.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
+    zones.forEach((zone) => {
+      const dropType = zone.dataset.dropType
+      if (dropType === 'ghost') {
+        Object.assign(zone.style, DROP_ZONE_STYLE, { display: 'block' })
+      } else if (dropType === 'in-step') {
+        if (dragType === 'journey') {
+          Object.assign(zone.style, DROP_ZONE_STYLE, { display: 'block', flex: '0 0 auto', minWidth: '80px' })
+        }
+      }
+    })
     this.aside.classList.add('plan-panel-dragging')
   }
 
   private hideDropTargets(): void {
-    for (const c of this.dropTargetCleanups) c()
-    this.dropTargetCleanups = []
-    const zones = this.aside?.querySelectorAll('.plan-panel-drop-zone')
-    zones?.forEach((z) => z.remove())
-    this.aside?.classList.remove('plan-panel-dragging')
-    const journeyCards = this.aside?.querySelectorAll<HTMLElement>('[data-draggable="journey"]')
-    journeyCards?.forEach((card) => {
-      card.style.background = ''
-      card.style.border = ''
+    this.isDragging = false
+    const zones = this.aside?.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
+    zones?.forEach((zone) => {
+      Object.assign(zone.style, DROP_ZONE_HIDDEN)
     })
+    this.aside?.classList.remove('plan-panel-dragging')
   }
 
   private buildJourneySection(step: DerivedJourneyStep, plan: Plan): HTMLElement {
@@ -265,7 +257,8 @@ export class PlanPanel {
     section.appendChild(heading)
 
     const journeysDiv = document.createElement('div')
-    Object.assign(journeysDiv.style, { display: 'flex', flexDirection: 'row', gap: '4px', flexWrap: 'wrap' })
+    journeysDiv.dataset.journeysRow = '1'
+    Object.assign(journeysDiv.style, { display: 'flex', flexDirection: 'row', gap: '4px', flexWrap: 'nowrap' })
 
     for (const j of step.journeys) {
       const vehicle = plan.vehicles[j.vehicleId]
@@ -274,7 +267,7 @@ export class PlanPanel {
 
       const card = document.createElement('div')
       Object.assign(card.style, {
-        background: 'rgba(255,255,255,0.08)',
+        ...JOURNEY_CARD_DEFAULT_STYLE,
         borderRadius: '6px',
         padding: '6px 8px',
         display: 'flex',
@@ -313,6 +306,13 @@ export class PlanPanel {
       card.appendChild(removeBtn)
       journeysDiv.appendChild(card)
     }
+
+    const inStepZone = document.createElement('div')
+    Object.assign(inStepZone.style, { ...DROP_ZONE_STYLE, ...DROP_ZONE_HIDDEN, flex: '0 0 auto', minWidth: '80px' })
+    inStepZone.className = 'plan-panel-drop-zone'
+    inStepZone.dataset.dropType = 'in-step'
+    inStepZone.dataset.stepIndex = String(step.stepIndex)
+    journeysDiv.appendChild(inStepZone)
 
     section.appendChild(journeysDiv)
     return section
