@@ -62,11 +62,6 @@ function inspectVehicle(
       } else if (intent.kind === 'DELIVER' && intent.vehicleId === id) {
         const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
         description = `Delivers Crate→${dest}`
-      } else if (intent.kind === 'TRANSFER' && (intent.fromVehicleId === id || intent.toVehicleId === id)) {
-        const dest = plan.crates[intent.crateId]?.destinationCountry ?? '?'
-        const fromName = plan.vehicles[intent.fromVehicleId]?.name ?? '?'
-        const toName = plan.vehicles[intent.toVehicleId]?.name ?? '?'
-        description = `${fromName} transfers Crate→${dest} to ${toName}`
       }
 
       if (description !== null) {
@@ -112,10 +107,6 @@ function inspectCrate(
     } else if (intent.kind === 'DELIVER' && intent.crateId === id) {
       const vehicleName = plan.vehicles[intent.vehicleId]?.name ?? '?'
       description = `Delivered by ${vehicleName}`
-    } else if (intent.kind === 'TRANSFER' && intent.crateId === id) {
-      const fromName = plan.vehicles[intent.fromVehicleId]?.name ?? '?'
-      const toName = plan.vehicles[intent.toVehicleId]?.name ?? '?'
-      description = `Transferred from ${fromName} to ${toName}`
     }
 
     if (description !== null) {

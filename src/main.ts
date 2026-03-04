@@ -65,7 +65,6 @@ let pinPlacementPreview: PinPlacementPreview | null = null
 let crateDropPreview: CrateDropPreview | null = null
 let crateLoadPreview: CrateLoadPreview | null = null
 let lastValidLoadTarget: { vehicleId: number; insertAfterStepIndex: number } | null = null
-let lastValidTransferTarget: { toVehicleId: number; insertAfterStepIndex: number } | null = null
 let lastValidUnloadTarget: { toTileId: number; isDelivery: boolean; insertAfterStepIndex: number } | null = null
 const pinContextMenu = new PinContextMenu()
 pinContextMenu.mount(document.body)
@@ -227,7 +226,6 @@ inputModeController.onChange((mode) => {
     pinContextMenu.hide()
     crateLoadMenu.hide()
     lastValidLoadTarget = null
-    lastValidTransferTarget = null
   }
   if (mode.kind !== 'NORMAL') gameItemRenderer.setHovered(null)
 })
@@ -330,21 +328,7 @@ renderer.domElement.addEventListener('mouseup', async (e) => {
   }
 
   if (mode.kind === 'CRATE_DROP') {
-    if (lastValidTransferTarget) {
-      const { toVehicleId, insertAfterStepIndex } = lastValidTransferTarget
-      undoHistory.snapshot(intentManager.getPlan())
-      intentManager.insertCargoStepAfter(insertAfterStepIndex, {
-        kind: 'TRANSFER',
-        crateId: mode.crateId,
-        fromVehicleId: mode.vehicleId,
-        toVehicleId,
-      })
-      lastValidTransferTarget = null
-      crateDropPreview?.hide()
-      await rerender()
-      inspectorPanel.show({ kind: 'VEHICLE', id: toVehicleId }, intentManager.getPlan(), derived, tileCentersApi)
-      inputModeController.enterNormal()
-    } else if (lastValidUnloadTarget) {
+    if (lastValidUnloadTarget) {
       const { toTileId, isDelivery, insertAfterStepIndex } = lastValidUnloadTarget
       undoHistory.snapshot(intentManager.getPlan())
       intentManager.insertCargoStepAfter(insertAfterStepIndex, isDelivery
@@ -468,42 +452,7 @@ renderer.domElement.addEventListener('mousemove', (e) => {
   }
 
   if (mode.kind === 'CRATE_DROP') {
-    const hitMeta = hits[0]?.object?.userData as
-      { entityType?: string; entityId?: number; vehicleId?: number; stepIndex?: number } | undefined
-
-    let toVehicleId: number | undefined
-    if (hitMeta?.entityType === 'VEHICLE' && hitMeta.entityId !== mode.vehicleId && hitMeta.entityId !== undefined) {
-      toVehicleId = hitMeta.entityId
-    } else if (hitMeta?.entityType === 'PIN' && hitMeta.vehicleId !== mode.vehicleId && hitMeta.vehicleId !== undefined) {
-      toVehicleId = hitMeta.vehicleId
-    }
-
-    if (toVehicleId !== undefined) {
-      const intent = {
-        kind: 'TRANSFER' as const,
-        crateId: mode.crateId,
-        fromVehicleId: mode.vehicleId,
-        toVehicleId,
-      }
-      const insertAfter = findFirstValidInsertionPoint(intent, derived)
-      if (insertAfter !== null) {
-        lastValidTransferTarget = { toVehicleId, insertAfterStepIndex: insertAfter }
-        const snap = derived.stepSnapshots[insertAfter]
-        const fromTile = snap.vehiclePositions.get(mode.vehicleId)
-        const toTile = snap.vehiclePositions.get(toVehicleId)
-        gameItemRenderer.setHovered(hits[0].object)
-        if (fromTile !== undefined && toTile !== undefined) {
-          const hue = intentManager.getPlan().vehicles[mode.vehicleId]?.hue ?? 0
-          crateDropPreview?.updateTransfer(fromTile, toTile, hue, globeCenter, tileCentersApi)
-        }
-      } else {
-        lastValidTransferTarget = null
-        gameItemRenderer.setHovered(null)
-      }
-    } else {
-      lastValidTransferTarget = null
-      gameItemRenderer.setHovered(null)
-    }
+    gameItemRenderer.setHovered(null)
     return
   }
 
@@ -538,7 +487,6 @@ globeScene.load().then(({ boundingSphere }) => {
 
     if (mode.kind === 'CRATE_DROP') {
       pinPlacementPreview?.hide()
-      if (lastValidTransferTarget !== null) return  // keep transfer preview when hovering pin/vehicle
       const crate = intentManager.getPlan().crates[mode.crateId]
       const isDelivery = crate && tile.country_name === crate.destinationCountry
       const intent = isDelivery

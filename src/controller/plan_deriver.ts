@@ -35,7 +35,6 @@ function computeValidCargoActions(
 ): ValidCargoActions {
   const validLoads: ValidCargoActions['validLoads'] = []
   const validUnloads: ValidCargoActions['validUnloads'] = []
-  const validTransfers: ValidCargoActions['validTransfers'] = []
   const validDelivers: ValidCargoActions['validDelivers'] = []
 
   for (const [crateId] of crateOnGround) {
@@ -73,25 +72,7 @@ function computeValidCargoActions(
     }
   }
 
-  for (const [fromVehicleId, crates] of vehicleCargo) {
-    const fromTile = vehiclePositions.get(fromVehicleId)
-    if (fromTile === undefined) continue
-    const neighbors = navApi.getNeighbors(fromTile, 'ALL')
-    for (const crateId of crates) {
-      for (const [toVehicleId] of vehicleCargo) {
-        if (toVehicleId === fromVehicleId) continue
-        const toTile = vehiclePositions.get(toVehicleId)
-        if (toTile !== undefined && neighbors.includes(toTile)) {
-          const intent: CargoIntent = { kind: 'TRANSFER', crateId, fromVehicleId, toVehicleId }
-          if (checkCargoValidity(intent, plan, vehiclePositions, crateOnGround, vehicleCargo, navApi, tileApi).valid) {
-            validTransfers.push({ crateId, fromVehicleId, toVehicleId })
-          }
-        }
-      }
-    }
-  }
-
-  return { validLoads, validUnloads, validTransfers, validDelivers }
+  return { validLoads, validUnloads, validDelivers }
 }
 
 function checkCargoValidity(
@@ -130,19 +111,6 @@ function checkCargoValidity(
       if (tileOccupied) return { valid: false, invalidReason: 'Tile occupied' }
       return { valid: true }
     }
-    case 'TRANSFER': {
-      const { crateId, fromVehicleId, toVehicleId } = intent
-      if (!vehicleCargo.get(fromVehicleId)?.has(crateId)) return { valid: false, invalidReason: 'Crate not on vehicle' }
-      if (!vehiclePositions.has(toVehicleId)) return { valid: false, invalidReason: 'Target vehicle not found' }
-      const fromTile = vehiclePositions.get(fromVehicleId)
-      const toTile = vehiclePositions.get(toVehicleId)
-      if (fromTile === undefined || toTile === undefined) return { valid: false, invalidReason: 'Vehicle not found' }
-      if (!navApi.getNeighbors(fromTile, 'ALL').includes(toTile)) return { valid: false, invalidReason: 'Not adjacent' }
-      const toVehicle = plan.vehicles[toVehicleId]
-      if (!toVehicle) return { valid: false, invalidReason: 'Target vehicle not found' }
-      if ((vehicleCargo.get(toVehicleId)?.size ?? 0) >= toVehicle.capacity) return { valid: false, invalidReason: 'Target vehicle at capacity' }
-      return { valid: true }
-    }
     case 'DELIVER': {
       const { crateId, vehicleId, toTileId } = intent
       if (!vehicleCargo.get(vehicleId)?.has(crateId)) return { valid: false, invalidReason: 'Crate not on vehicle' }
@@ -173,10 +141,6 @@ function applyCargoEffect(
     case 'UNLOAD':
       vehicleCargo.get(intent.vehicleId)?.delete(intent.crateId)
       crateOnGround.set(intent.crateId, intent.toTileId)
-      break
-    case 'TRANSFER':
-      vehicleCargo.get(intent.fromVehicleId)?.delete(intent.crateId)
-      vehicleCargo.get(intent.toVehicleId)?.add(intent.crateId)
       break
     case 'DELIVER':
       vehicleCargo.get(intent.vehicleId)?.delete(intent.crateId)
@@ -291,13 +255,6 @@ function intentInValidCargoActions(intent: CargoIntent, v: ValidCargoActions): b
     case 'UNLOAD':
       return v.validUnloads.some(
         (x) => x.crateId === intent.crateId && x.vehicleId === intent.vehicleId && x.toTileId === intent.toTileId,
-      )
-    case 'TRANSFER':
-      return v.validTransfers.some(
-        (x) =>
-          x.crateId === intent.crateId &&
-          x.fromVehicleId === intent.fromVehicleId &&
-          x.toVehicleId === intent.toVehicleId,
       )
     case 'DELIVER':
       return v.validDelivers.some(

@@ -13,7 +13,7 @@ export class InspectorPanel {
   onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
   /** Called when the user removes a cargo intent from a step. */
   onRemoveCargoIntent: ((stepIndex: number) => void) | null = null
-  /** Called when the user initiates an unload/transfer from a journey step. */
+  /** Called when the user initiates an unload from a journey step. */
   onUnloadFromStep: ((vehicleId: number, stepIndex: number, crateId: number) => void) | null = null
 
   private aside: HTMLElement | null = null

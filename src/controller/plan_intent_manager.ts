@@ -21,10 +21,7 @@ export class PlanIntentManager {
         if (step.journeys.some((j) => j.vehicleId === vehicleId)) last = i
       } else {
         const a = step.action
-        if (
-          ((a.kind === 'LOAD' || a.kind === 'UNLOAD' || a.kind === 'DELIVER') && a.vehicleId === vehicleId) ||
-          (a.kind === 'TRANSFER' && (a.fromVehicleId === vehicleId || a.toVehicleId === vehicleId))
-        ) last = i
+        if ((a.kind === 'LOAD' || a.kind === 'UNLOAD' || a.kind === 'DELIVER') && a.vehicleId === vehicleId) last = i
       }
     }
     return last

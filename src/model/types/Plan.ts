@@ -19,7 +19,6 @@ export interface JourneyStep {
 export type CargoIntent =
   | { kind: 'LOAD';     crateId: number; vehicleId: number }
   | { kind: 'UNLOAD';   crateId: number; vehicleId: number; toTileId: number }
-  | { kind: 'TRANSFER'; crateId: number; fromVehicleId: number; toVehicleId: number }
   | { kind: 'DELIVER';  crateId: number; vehicleId: number; toTileId: number }
 
 export interface CargoStep {

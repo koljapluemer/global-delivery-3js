@@ -55,12 +55,11 @@ Cargo actions within a step are STRICTLY LINEAR.
 There are the following actions:
 
 - `LOAD`: loading cargo onto a vehicle. Valid if there's a vehicle on the (neighboring) tiles which still has capacity. When the user is creating this intent via the in-world UI, smartly detect validity, and smartly place it in the plan: For example, if a vehicle only arrives at a target tile at a certain point, put the intent in the first cargo step where it's actually valid. If the vehicle arrives at a certain point, but at that point has no capacity left, but then unloads, place the intent in the relevant cargo step behind the unload intent.
-- `UNLOAD`: putting cargo out of a vehicle, onto an unoccupied, exactly neighboring tile. 
-- `TRANSFER`: A combined LOAD+UNLOAD. Valid when the two vehicles are directly neighboring, and the receiving one has capacity.
+- `UNLOAD`: putting cargo out of a vehicle, onto an unoccupied, exactly neighboring tile.
 - `DELIVER`: Just an unload, but onto a tile that belongs to the cargo's destination country. As such, the crate will then disappear (no ghost crate) and not be available further down the plan. We however still draw the unload arrow, and of course check if it's land and neighboring the vehicle, and count the tile as occupied.
 
 
-Start caring about `capacity`. A given [vehicle](src/model/types/Vehicle.ts) may only load cargo according to its `capacity`, which for now it should simply inherent at instantiation from its [VehicleType](src/model/types/VehicleType.ts). A loading or transfer action is invalid if the receiving vehicle has not enough capacity left (for now, every crate simply takes 1 capacity).
+Start caring about `capacity`. A given [vehicle](src/model/types/Vehicle.ts) may only load cargo according to its `capacity`, which for now it should simply inherent at instantiation from its [VehicleType](src/model/types/VehicleType.ts). A loading action is invalid if the receiving vehicle has not enough capacity left (for now, every crate simply takes 1 capacity).
 
 Similar to journey intents, a cargo action intents can be dragged and dropped.
 They can be dragged and dropped *within* their cargo step, and also to other cargo steps, and we show similar ghost steps as for journey steps, but with some conditions: show a drop target "before" the complete existing plan only if the first existing step of the plan isn't already a cargo step (since there is no difference between moving an intent to the start of a given step or to the end of a new step before that step), and only show a new drop target at the end of the plan if the last step of the plan isn't already a cargo step (same reason).
@@ -150,11 +149,10 @@ Type this cleanly.
   the list (perhaps as a structural placeholder)? The spec addresses empty cargo steps but not empty journey steps.
 
   ---
-  8. Mockup uses "TRANSFER" for what looks like an UNLOAD
+  8. Mockup terminology
 
-  Line 2 of the mockup cargo step: Little Boat transfers Crate to Brazil to spot in Argentina — this is moving a crate from a vehicle to a ground tile, which is an UNLOAD by
-  the spec's definitions. TRANSFERs are vehicle-to-vehicle only. Minor terminology inconsistency in the mock, but worth cleaning up so the mock matches the spec's defined
-  action types.
+  Line 2 of the mockup cargo step: "Little Boat transfers Crate to Brazil to spot in Argentina" — this is moving a crate from a vehicle to a ground tile, i.e. an UNLOAD (or
+  DELIVER if the tile is in the crate's destination country). The spec defines only LOAD, UNLOAD, and DELIVER. Clean up the mock so it matches these action types.
 
   ---
   9. "Earliest possible journey step" auto-assignment is fragile at scale

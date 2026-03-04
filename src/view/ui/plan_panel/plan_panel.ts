@@ -313,8 +313,6 @@ export class PlanPanel {
         return `${vehicleName(intent.vehicleId)} loads Crate→${crateDest(intent.crateId)}`
       case 'UNLOAD':
         return `${vehicleName(intent.vehicleId)} unloads Crate→${crateDest(intent.crateId)} to ${tileName(intent.toTileId)}`
-      case 'TRANSFER':
-        return `${vehicleName(intent.fromVehicleId)} transfers Crate→${crateDest(intent.crateId)} to ${vehicleName(intent.toVehicleId)}`
       case 'DELIVER':
         return `${vehicleName(intent.vehicleId)} delivers Crate→${crateDest(intent.crateId)}`
     }

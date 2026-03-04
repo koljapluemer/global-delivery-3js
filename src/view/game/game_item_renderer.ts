@@ -317,15 +317,6 @@ export class GameItemRenderer {
             }
             break
           }
-          case 'TRANSFER': {
-            const fromTileId = precedingSnapshot.vehiclePositions.get(intent.fromVehicleId)
-            const toTileId = precedingSnapshot.vehiclePositions.get(intent.toVehicleId)
-            const fromVehicle = plan.vehicles[intent.fromVehicleId]
-            if (fromTileId !== undefined && toTileId !== undefined && fromVehicle) {
-              await this.renderCargoArrow(fromTileId, toTileId, fromVehicle.hue, tileApi, globeCenter)
-            }
-            break
-          }
         }
       }
     }
@@ -340,10 +331,7 @@ export class GameItemRenderer {
         return snapshot.crateOnGround.get(intent.crateId)
       case 'UNLOAD':
       case 'DELIVER':
-      case 'TRANSFER':
-        return snapshot.vehiclePositions.get(
-          intent.kind === 'TRANSFER' ? intent.fromVehicleId : intent.vehicleId,
-        )
+        return snapshot.vehiclePositions.get(intent.vehicleId)
     }
   }
 

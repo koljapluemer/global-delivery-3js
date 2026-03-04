@@ -29,7 +29,6 @@ export type DerivedStep = DerivedJourneyStep | DerivedCargoStep
 export interface ValidCargoActions {
   validLoads: Array<{ crateId: number; vehicleId: number }>
   validUnloads: Array<{ crateId: number; vehicleId: number; toTileId: number }>
-  validTransfers: Array<{ crateId: number; fromVehicleId: number; toVehicleId: number }>
   validDelivers: Array<{ crateId: number; vehicleId: number; toTileId: number }>
 }
 

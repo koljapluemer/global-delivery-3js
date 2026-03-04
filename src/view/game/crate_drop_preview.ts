@@ -92,36 +92,6 @@ export class CrateDropPreview {
     }
   }
 
-  /** Preview arrow for transfer (vehicle → vehicle). No ghost crate. */
-  async updateTransfer(
-    fromTileId: number,
-    toTileId: number,
-    vehicleHue: number,
-    globeCenter: THREE.Vector3,
-    tileApi: TileCentersApi,
-  ): Promise<void> {
-    this.clearScene()
-    const gen = ++this.updateGen
-    const fromTile = tileApi.getTileById(fromTileId)
-    const toTile = tileApi.getTileById(toTileId)
-    if (!fromTile || !toTile) return
-    const arrowGltf = await this.loadGltf(roundedArrowUrl)
-    if (this.updateGen !== gen) return
-    const fromPos = new THREE.Vector3(fromTile.x, fromTile.z, -fromTile.y)
-    const toPos = new THREE.Vector3(toTile.x, toTile.z, -toTile.y)
-    const yAxis = toPos.clone().sub(fromPos).normalize()
-    const toGlobe = globeCenter.clone().sub(fromPos)
-    const zAxis = toGlobe.clone().sub(yAxis.clone().multiplyScalar(toGlobe.dot(yAxis))).normalize()
-    const xAxis = new THREE.Vector3().crossVectors(yAxis, zAxis)
-    const arrow = arrowGltf.scene.clone()
-    arrow.scale.setScalar(CARGO_ARROW_SCALE)
-    arrow.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis))
-    arrow.position.copy(fromPos).addScaledVector(yAxis, CARGO_ARROW_SURFACE_OFFSET)
-    applyPrimaryColor(arrow, hsvColor(vehicleHue))
-    this.scene.add(arrow)
-    this.ghostArrow = arrow
-  }
-
   hide(): void {
     ++this.updateGen
     this.clearScene()
