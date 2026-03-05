@@ -184,13 +184,14 @@ export class App {
           boundingSphere.center,
           boundingSphere.radius,
         )
-        this.labelRenderer.onEntityClick = (target) => {
+        this.labelRenderer.onEntityClick = (target, worldPosition) => {
           inspectorPanel.show(
             target,
             intentManager.getPlan(),
             this.derived,
             tileCentersApi,
           )
+          this.deps.mainCamera.panTo(worldPosition)
         }
         const plan = intentManager.getPlan()
         const legs = deriveRouteLegs(this.derived)

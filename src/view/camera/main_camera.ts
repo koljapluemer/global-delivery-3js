@@ -89,6 +89,17 @@ export class MainCamera {
     this.camera.updateProjectionMatrix()
   }
 
+  /** Orbit so the given world position is at screen center (simulates right-drag; target and distance unchanged). */
+  panTo(worldPosition: THREE.Vector3): void {
+    const d = worldPosition.clone().sub(this.target)
+    if (d.lengthSq() < 1e-10) return
+    d.normalize()
+    this.longitude = Math.atan2(d.x, d.z)
+    this.latitude = Math.asin(Math.max(-1, Math.min(1, d.y)))
+    this.clampLatitude()
+    this.applyOrbit()
+  }
+
   private onMouseMove(e: MouseEvent) {
     if (!this.dragging) return
     const zoomT = (this.distance - this.distanceMin) /

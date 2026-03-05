@@ -51,7 +51,7 @@ export class LabelRenderer {
   private readonly camera: THREE.PerspectiveCamera
   private readonly globeCenter: THREE.Vector3
   private readonly globeRadius: number
-  onEntityClick: ((target: EntityTarget) => void) | null = null
+  onEntityClick: ((target: EntityTarget, worldPosition: THREE.Vector3) => void) | null = null
   private container: HTMLDivElement
   private labels = new Map<number, LabelEntry>()
   private vehicleLabels = new Map<number, LabelEntry>()
@@ -85,11 +85,16 @@ export class LabelRenderer {
       if (!this.labels.has(item.entityId)) {
         const { el, textEl } = this.createBubble(item.destinationCountry, item.rewardMoney, item.rewardStamps, item.entityId)
         this.container.appendChild(el)
-        this.labels.set(item.entityId, {
+        const entry: LabelEntry = {
           el,
           textEl,
           worldPos: item.worldPosition.clone(),
           smoothRot: 0,
+        }
+        this.labels.set(item.entityId, entry)
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          this.onEntityClick?.({ kind: 'CRATE', id: item.entityId }, entry.worldPos.clone())
         })
       } else {
         const entry = this.labels.get(item.entityId)!
@@ -133,11 +138,16 @@ export class LabelRenderer {
       if (!this.vehicleLabels.has(item.entityId)) {
         const { el, textEl } = this.createVehicleBubble(item.vehicleName, item.hue, item.entityId)
         this.container.appendChild(el)
-        this.vehicleLabels.set(item.entityId, {
+        const entry: LabelEntry = {
           el,
           textEl,
           worldPos: item.worldPosition.clone(),
           smoothRot: 0,
+        }
+        this.vehicleLabels.set(item.entityId, entry)
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          this.onEntityClick?.({ kind: 'VEHICLE', id: item.entityId }, entry.worldPos.clone())
         })
       } else {
         const entry = this.vehicleLabels.get(item.entityId)!
@@ -198,7 +208,12 @@ export class LabelRenderer {
         const { el, textEl } = this.createSmallBubble(item.label, item.vehicleId)
         el.style.transition = 'transform 0.2s ease'
         this.container.appendChild(el)
-        this.pinLabels.set(item.id, { el, textEl, worldPos: item.worldPosition.clone(), smoothRot: 0, id: item.id })
+        const worldPos = item.worldPosition.clone()
+        this.pinLabels.set(item.id, { el, textEl, worldPos, smoothRot: 0, id: item.id })
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          this.onEntityClick?.({ kind: 'VEHICLE', id: item.vehicleId }, worldPos.clone())
+        })
       } else {
         this.pinLabels.get(item.id)!.worldPos.copy(item.worldPosition)
       }
@@ -281,7 +296,7 @@ export class LabelRenderer {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private createBubble(destination: string, rewardMoney: number, rewardStamps: number, entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createBubble(destination: string, rewardMoney: number, rewardStamps: number, _entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',
@@ -298,10 +313,6 @@ export class LabelRenderer {
       gap: '2px',
       pointerEvents: 'auto',
       cursor: 'pointer',
-    })
-    el.addEventListener('click', (e) => {
-      e.stopPropagation()
-      this.onEntityClick?.({ kind: 'CRATE', id: entityId })
     })
 
     const textEl = document.createElement('span')
@@ -328,7 +339,7 @@ export class LabelRenderer {
     return { el, textEl }
   }
 
-  private createVehicleBubble(vehicleName: string, hue: number, entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createVehicleBubble(vehicleName: string, hue: number, _entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
     const hexColor = `#${hsvColor(hue).getHexString()}`
     const coloredSvg = vehicleBubbleSvgRaw
       .replace('#4CAF50', hexColor)
@@ -351,10 +362,6 @@ export class LabelRenderer {
       pointerEvents: 'auto',
       cursor: 'pointer',
     })
-    el.addEventListener('click', (e) => {
-      e.stopPropagation()
-      this.onEntityClick?.({ kind: 'VEHICLE', id: entityId })
-    })
 
     const textEl = document.createElement('span')
     textEl.textContent = vehicleName
@@ -370,7 +377,7 @@ export class LabelRenderer {
     return { el, textEl }
   }
 
-  private createSmallBubble(label: string, vehicleId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createSmallBubble(label: string, _vehicleId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',
@@ -385,10 +392,6 @@ export class LabelRenderer {
       paddingBottom: '8px',
       pointerEvents: 'auto',
       cursor: 'pointer',
-    })
-    el.addEventListener('click', (e) => {
-      e.stopPropagation()
-      this.onEntityClick?.({ kind: 'VEHICLE', id: vehicleId })
     })
     const textEl = document.createElement('span')
     textEl.textContent = label
