@@ -259,6 +259,7 @@ export class App {
 
   animate(deltaSeconds: number): void {
     const { renderer, globeScene, mainCamera } = this.deps
+    mainCamera.update(deltaSeconds)
     this.sceneInteractionManager?.update()
     renderer.render(globeScene.scene, mainCamera.camera)
     this.labelRenderer?.update(deltaSeconds)

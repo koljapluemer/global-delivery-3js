@@ -5,6 +5,7 @@ const ZOOM_MAX_RADIUS_FACTOR = 5.0
 const ZOOM_INITIAL_FIT_MARGIN = 2
 
 const MAX_LATITUDE_DEG = 85.0
+const PAN_ANIMATION_DURATION_S = 0.3
 const ORBIT_SENSITIVITY = 0.004
 const ROTATION_SCALE_AT_MIN_ZOOM = 0.1
 const ROTATION_SCALE_AT_MAX_ZOOM = 3.0
@@ -22,6 +23,12 @@ export class MainCamera {
   private distanceMax = 5.0
   private longitude = 0.0
   private latitude = 0.0
+  private panElapsed = 0
+  private panDuration = 0
+  private panStartLongitude = 0
+  private panStartLatitude = 0
+  private panTargetLongitude = 0
+  private panTargetLatitude = 0
   private dragging = false
 
   constructor(canvas: HTMLCanvasElement) {
@@ -89,15 +96,33 @@ export class MainCamera {
     this.camera.updateProjectionMatrix()
   }
 
-  /** Orbit so the given world position is at screen center (simulates right-drag; target and distance unchanged). */
+  /** Orbit so the given world position is at screen center (simulates right-drag; target and distance unchanged). Animates over PAN_ANIMATION_DURATION_S. */
   panTo(worldPosition: THREE.Vector3): void {
     const d = worldPosition.clone().sub(this.target)
     if (d.lengthSq() < 1e-10) return
     d.normalize()
-    this.longitude = Math.atan2(d.x, d.z)
-    this.latitude = Math.asin(Math.max(-1, Math.min(1, d.y)))
+    const maxRad = THREE.MathUtils.degToRad(MAX_LATITUDE_DEG)
+    this.panStartLongitude = this.longitude
+    this.panStartLatitude = this.latitude
+    this.panTargetLongitude = Math.atan2(d.x, d.z)
+    this.panTargetLatitude = Math.max(-maxRad, Math.min(maxRad, Math.asin(Math.max(-1, Math.min(1, d.y)))))
+    this.panElapsed = 0
+    this.panDuration = PAN_ANIMATION_DURATION_S
+  }
+
+  /** Call each frame with delta in seconds to drive pan animation. */
+  update(delta: number): void {
+    if (this.panDuration <= 0) return
+    this.panElapsed += delta
+    const t = Math.min(1, this.panElapsed / this.panDuration)
+    let dLon = this.panTargetLongitude - this.panStartLongitude
+    while (dLon > Math.PI) dLon -= 2 * Math.PI
+    while (dLon < -Math.PI) dLon += 2 * Math.PI
+    this.longitude = this.panStartLongitude + dLon * t
+    this.latitude = this.panStartLatitude + (this.panTargetLatitude - this.panStartLatitude) * t
     this.clampLatitude()
     this.applyOrbit()
+    if (t >= 1) this.panDuration = 0
   }
 
   private onMouseMove(e: MouseEvent) {
