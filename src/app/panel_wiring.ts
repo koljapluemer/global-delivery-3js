@@ -21,6 +21,7 @@ export interface PanelWiringDeps {
   rerender: () => Promise<void>
   getDerived: () => DerivedPlanState
   getPlan: () => Plan
+  onConfirmPlan?: () => void
 }
 
 export function wirePanelCallbacks(deps: PanelWiringDeps): void {
@@ -35,6 +36,7 @@ export function wirePanelCallbacks(deps: PanelWiringDeps): void {
     rerender,
     getDerived,
     getPlan,
+    onConfirmPlan,
   } = deps
 
   inspectorPanel.onAddPin = (vehicleId) => {
@@ -85,6 +87,7 @@ export function wirePanelCallbacks(deps: PanelWiringDeps): void {
     intentManager.moveJourneyIntentIntoStep(vehicleId, fromStepIndex, toStepIndex)
     await rerender()
   }
+  planPanel.onConfirmPlan = () => onConfirmPlan?.()
 
   hudPanel.onUndo = async () => {
     const prev = undoHistory.undo(getPlan())

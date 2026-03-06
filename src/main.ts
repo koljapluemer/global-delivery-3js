@@ -16,6 +16,11 @@ import { CancelButton } from './view/ui/overlay/cancel_button'
 import { PinContextMenu } from './view/ui/overlay/pin_context_menu'
 import { CrateLoadMenu } from './view/ui/overlay/crate_load_menu'
 import { App } from './app/App'
+import { MainMenuScreen } from './view/ui/screens/main_menu_screen'
+import { ShopScreen } from './view/ui/screens/shop_screen'
+import { StartLevelScreen } from './view/ui/screens/start_level_screen'
+import { LevelEvaluationScreen } from './view/ui/screens/level_evaluation_screen'
+import { GameFlowController } from './controller/game_flow/game_flow_controller'
 import type { GameState } from './model/types/GameState'
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -47,6 +52,15 @@ pinContextMenu.mount(document.body)
 const crateLoadMenu = new CrateLoadMenu()
 crateLoadMenu.mount(document.body)
 
+const mainMenuScreen = new MainMenuScreen()
+mainMenuScreen.mount(document.body)
+const shopScreen = new ShopScreen()
+shopScreen.mount(document.body)
+const startLevelScreen = new StartLevelScreen()
+startLevelScreen.mount(document.body)
+const levelEvalScreen = new LevelEvaluationScreen()
+levelEvalScreen.mount(document.body)
+
 const gameState: GameState = { money: 0, stamps: 0, traveltimeBudget: 1000 }
 
 const app = new App({
@@ -68,7 +82,23 @@ const app = new App({
   gameState,
 })
 
-globeScene.load().then(({ boundingSphere }) => app.start(boundingSphere))
+const flowController = new GameFlowController({
+  app,
+  hudPanel,
+  gameState,
+  mainMenuScreen,
+  shopScreen,
+  startLevelScreen,
+  levelEvalScreen,
+  intentManager,
+  tileCentersApi,
+  navApi,
+})
+
+globeScene.load().then(({ boundingSphere }) => {
+  app.start(boundingSphere)
+  flowController.start()
+})
 
 let lastTime = performance.now()
 function animate(now: number): void {

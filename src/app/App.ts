@@ -24,10 +24,13 @@ import type { PlanIntentManager } from '../controller/plan_intent_manager'
 import type { UndoRedoHistory } from '../controller/undo_redo'
 import type { NavApi } from '../controller/navigation'
 import type { TileCentersApi } from '../controller/layer_0/tile_centers_api'
-import type { DerivedPlanState } from '../model/types/DerivedPlanState'
+import type { DerivedPlanState, DerivedCargoStep } from '../model/types/DerivedPlanState'
 import type { GameState } from '../model/types/GameState'
 import type { TileCenter } from '../controller/layer_0/tile_centers_api'
 import type { Actor } from 'xstate'
+import type { LevelStats } from '../model/types/LevelStats'
+import { AnimateRenderer } from '../view/game/animate_renderer'
+import { PlanAnimator } from '../controller/animate_mode/plan_animator'
 
 export interface AppDeps {
   renderer: THREE.WebGLRenderer
@@ -59,6 +62,8 @@ export class App {
   private crateLoadPreview: CrateLoadPreview | null = null
   private sceneInteractionManager: SceneInteractionManager | null = null
   private canvasInputController: CanvasInputController | null = null
+  private frameCallback: ((delta: number) => void) | null = null
+  onConfirmPlan: (() => void) | null = null
 
   constructor(deps: AppDeps) {
     this.deps = deps
@@ -112,7 +117,11 @@ export class App {
       undoHistory.canUndo(),
       undoHistory.canRedo(),
     )
-    planPanel.update(intentManager.getPlan(), this.derived)
+    const hasInvalidIntents = this.derived.steps.some(
+      (s) => s.kind === 'CARGO' && !(s as DerivedCargoStep).action.valid,
+    )
+    const canConfirm = !hasInvalidIntents && this.derived.totalTraveltime <= gameState.traveltimeBudget
+    planPanel.update(intentManager.getPlan(), this.derived, canConfirm)
   }
 
   start(boundingSphere: THREE.Sphere): void {
@@ -205,7 +214,7 @@ export class App {
           undoHistory.canUndo(),
           undoHistory.canRedo(),
         )
-        planPanel.update(plan, this.derived)
+        planPanel.update(plan, this.derived, false)
 
         wirePanelCallbacks({
           inspectorPanel,
@@ -218,6 +227,7 @@ export class App {
           rerender: () => this.rerender(),
           getDerived: () => this.derived,
           getPlan: () => intentManager.getPlan(),
+          onConfirmPlan: () => this.onConfirmPlan?.(),
         })
 
         subscribeInputModeUI({
@@ -259,10 +269,93 @@ export class App {
 
   animate(deltaSeconds: number): void {
     const { renderer, globeScene, mainCamera } = this.deps
+    this.frameCallback?.(deltaSeconds)
     mainCamera.update(deltaSeconds)
     this.sceneInteractionManager?.update()
     renderer.render(globeScene.scene, mainCamera.camera)
     this.labelRenderer?.update(deltaSeconds)
+  }
+
+  hidePlanUI(): void {
+    const { hudPanel, planPanel, inspectorPanel } = this.deps
+    hudPanel.hide()
+    planPanel.hide()
+    inspectorPanel.hide()
+  }
+
+  showPlanUI(): void {
+    const { hudPanel, planPanel } = this.deps
+    hudPanel.show()
+    planPanel.show()
+  }
+
+  async enterAnimateMode(
+    onHudUpdate: () => void,
+    onComplete: (stats: LevelStats) => void,
+  ): Promise<void> {
+    const { globeScene, planPanel, inspectorPanel, tileCentersApi, gameState } = this.deps
+
+    // Hide interactive panels, keep HUD
+    planPanel.hide()
+    inspectorPanel.hide()
+
+    // Block all pointer interaction with an overlay
+    const overlay = document.createElement('div')
+    Object.assign(overlay.style, {
+      position: 'fixed',
+      inset: '0',
+      zIndex: '50',
+      cursor: 'wait',
+    })
+    document.body.appendChild(overlay)
+    const animRenderer = new AnimateRenderer(globeScene.scene)
+    const animator = new PlanAnimator()
+
+    this.frameCallback = (delta) => animator.tick(delta)
+
+    const stats = await animator.run({
+      plan: this.deps.intentManager.getPlan(),
+      derived: this.derived,
+      tileApi: tileCentersApi,
+      globeCenter: this.globeCenter,
+      animRenderer,
+      gameState,
+      onHudUpdate,
+    })
+
+    this.frameCallback = null
+    animRenderer.dispose()
+
+    document.body.removeChild(overlay)
+
+    onComplete(stats)
+  }
+
+  advancePlanToNextTurn(): void {
+    const { intentManager, undoHistory } = this.deps
+    const snaps = this.derived.stepSnapshots
+    const lastSnap = snaps.length > 0 ? snaps[snaps.length - 1] : this.derived.initialSnapshot
+
+    const vehiclePositions: Record<number, number> = Object.fromEntries(lastSnap.vehiclePositions)
+
+    // Ground crates keep their tile
+    const cratePositions: Record<number, number> = Object.fromEntries(lastSnap.crateOnGround)
+    // Crates on vehicles are placed at the vehicle's current tile
+    for (const [vehicleId, crateIds] of lastSnap.vehicleCargo) {
+      const vTile = lastSnap.vehiclePositions.get(vehicleId)
+      if (vTile === undefined) continue
+      for (const crateId of crateIds) {
+        cratePositions[crateId] = vTile
+      }
+    }
+
+    const plan = intentManager.getPlan()
+    intentManager.resetPlan({
+      ...plan,
+      initialState: { vehiclePositions, cratePositions },
+      steps: [],
+    })
+    undoHistory.clear()
   }
 
   resize(): void {

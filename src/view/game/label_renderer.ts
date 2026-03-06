@@ -83,7 +83,7 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.entityId)
       if (!this.labels.has(item.entityId)) {
-        const { el, textEl } = this.createBubble(item.destinationCountry, item.rewardMoney, item.rewardStamps, item.entityId)
+        const { el, textEl } = this.createBubble(item.destinationCountry, item.rewardMoney, item.rewardStamps)
         this.container.appendChild(el)
         const entry: LabelEntry = {
           el,
@@ -136,7 +136,7 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.entityId)
       if (!this.vehicleLabels.has(item.entityId)) {
-        const { el, textEl } = this.createVehicleBubble(item.vehicleName, item.hue, item.entityId)
+        const { el, textEl } = this.createVehicleBubble(item.vehicleName, item.hue)
         this.container.appendChild(el)
         const entry: LabelEntry = {
           el,
@@ -205,7 +205,7 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.id)
       if (!this.pinLabels.has(item.id)) {
-        const { el, textEl } = this.createSmallBubble(item.label, item.vehicleId)
+        const { el, textEl } = this.createSmallBubble(item.label)
         el.style.transition = 'transform 0.2s ease'
         this.container.appendChild(el)
         const worldPos = item.worldPosition.clone()
@@ -296,7 +296,7 @@ export class LabelRenderer {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private createBubble(destination: string, rewardMoney: number, rewardStamps: number, _entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createBubble(destination: string, rewardMoney: number, rewardStamps: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',
@@ -339,7 +339,7 @@ export class LabelRenderer {
     return { el, textEl }
   }
 
-  private createVehicleBubble(vehicleName: string, hue: number, _entityId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createVehicleBubble(vehicleName: string, hue: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
     const hexColor = `#${hsvColor(hue).getHexString()}`
     const coloredSvg = vehicleBubbleSvgRaw
       .replace('#4CAF50', hexColor)
@@ -377,7 +377,7 @@ export class LabelRenderer {
     return { el, textEl }
   }
 
-  private createSmallBubble(label: string, _vehicleId: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createSmallBubble(label: string): { el: HTMLDivElement; textEl: HTMLSpanElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',

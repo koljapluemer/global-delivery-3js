@@ -27,8 +27,11 @@ export class PlanPanel {
   onMoveJourneyIntent: ((vehicleId: number, fromStepIndex: number, toStepIndex: number | 'before-all' | 'after-all') => void) | null = null
   onMoveJourneyIntentIntoStep: ((vehicleId: number, fromStepIndex: number, toStepIndex: number) => void) | null = null
   onMoveCargoStep: ((fromStepIndex: number, toAfterStepIndex: number) => void) | null = null
+  onConfirmPlan: (() => void) | null = null
 
+  private containerEl: HTMLElement | null = null
   private aside: HTMLElement | null = null
+  private confirmBtn: HTMLButtonElement | null = null
   private tileApi: TileCentersApi | null = null
   private draggableCleanups: Array<() => void> = []
   private dropTargetCleanups: Array<() => void> = []
@@ -45,15 +48,57 @@ export class PlanPanel {
       left: '0',
       top: '48px',
       height: 'calc(100% - 48px)',
-      overflowY: 'auto',
-      padding: '1rem',
+      display: 'flex',
+      flexDirection: 'column',
       background: 'rgba(0,0,0,0.6)',
       color: '#fff',
       zIndex: '10',
       minWidth: '220px',
       maxWidth: '300px',
+      overflow: 'hidden',
     })
-    this.aside = aside
+
+    const content = document.createElement('div')
+    Object.assign(content.style, {
+      flex: '1',
+      overflowY: 'auto',
+      padding: '1rem',
+    })
+    aside.appendChild(content)
+
+    const footer = document.createElement('div')
+    Object.assign(footer.style, {
+      padding: '0.5rem 1rem 0.75rem',
+      borderTop: '1px solid rgba(255,255,255,0.08)',
+      background: 'rgba(0,0,0,0.6)',
+    })
+    const confirmBtn = document.createElement('button')
+    Object.assign(confirmBtn.style, {
+      width: '100%',
+      padding: '0.5rem',
+      fontSize: '13px',
+      fontWeight: '600',
+      borderRadius: '6px',
+      border: '1px solid rgba(255,255,255,0.25)',
+      cursor: 'pointer',
+      letterSpacing: '0.03em',
+      background: 'rgba(255,255,255,0.12)',
+      color: '#fff',
+    })
+    confirmBtn.textContent = 'Confirm Plan'
+    confirmBtn.addEventListener('click', () => { if (!confirmBtn.disabled) this.onConfirmPlan?.() })
+    confirmBtn.addEventListener('mouseenter', () => {
+      if (!confirmBtn.disabled) confirmBtn.style.background = 'rgba(255,255,255,0.22)'
+    })
+    confirmBtn.addEventListener('mouseleave', () => {
+      if (!confirmBtn.disabled) confirmBtn.style.background = 'rgba(255,255,255,0.12)'
+    })
+    footer.appendChild(confirmBtn)
+    aside.appendChild(footer)
+
+    this.containerEl = aside
+    this.aside = content
+    this.confirmBtn = confirmBtn
     this.tileApi = tileApi
     container.appendChild(aside)
 
@@ -62,9 +107,9 @@ export class PlanPanel {
         this.isDragging = true
         const data = source.data as { type: string; vehicleId?: number; fromStepIndex?: number }
         if (data.type === 'journey' && data.vehicleId !== undefined && data.fromStepIndex !== undefined) {
-          this.showDropTargets('journey', data.vehicleId, data.fromStepIndex)
+          this.showDropTargets('journey')
         } else if (data.type === 'cargo' && data.fromStepIndex !== undefined) {
-          this.showDropTargets('cargo', undefined, data.fromStepIndex)
+          this.showDropTargets('cargo')
         }
       },
       onDrop: () => {
@@ -78,11 +123,21 @@ export class PlanPanel {
     this.hideDropTargets()
     this.monitorCleanup?.()
     this.monitorCleanup = null
+    this.containerEl = null
     this.aside = null
+    this.confirmBtn = null
     this.tileApi = null
   }
 
-  update(plan: Plan, derived: DerivedPlanState): void {
+  hide(): void {
+    if (this.containerEl) this.containerEl.style.display = 'none'
+  }
+
+  show(): void {
+    if (this.containerEl) this.containerEl.style.display = 'flex'
+  }
+
+  update(plan: Plan, derived: DerivedPlanState, canConfirm: boolean): void {
     if (!this.aside || !this.tileApi) return
     if (this.isDragging) return
     this.currentPlan = plan
@@ -94,6 +149,16 @@ export class PlanPanel {
     this.dropTargetCleanups = []
 
     this.aside.innerHTML = ''
+
+    if (this.confirmBtn) {
+      this.confirmBtn.disabled = !canConfirm
+      Object.assign(this.confirmBtn.style, {
+        background: canConfirm ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)',
+        color: canConfirm ? '#fff' : 'rgba(255,255,255,0.35)',
+        cursor: canConfirm ? 'pointer' : 'not-allowed',
+        borderColor: canConfirm ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)',
+      })
+    }
 
     if (derived.steps.length === 0) {
       const empty = document.createElement('p')
@@ -206,7 +271,7 @@ export class PlanPanel {
     })
   }
 
-  private showDropTargets(dragType: 'journey' | 'cargo', _vehicleId?: number, _fromStepIndex?: number): void {
+  private showDropTargets(dragType: 'journey' | 'cargo'): void {
     if (!this.aside) return
     const zones = this.aside.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
     zones.forEach((zone) => {

@@ -110,6 +110,14 @@ export class HudPanel {
     this.el.appendChild(right)
   }
 
+  hide(): void {
+    if (this.el) this.el.style.display = 'none'
+  }
+
+  show(): void {
+    if (this.el) this.el.style.display = 'flex'
+  }
+
   private makeBadge(icon: SVGElement, value: string): HTMLElement {
     const wrap = document.createElement('div')
     Object.assign(wrap.style, { display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '13px' })

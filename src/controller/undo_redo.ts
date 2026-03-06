@@ -13,6 +13,11 @@ export class UndoRedoHistory {
   canUndo(): boolean { return this.past.length > 0 }
   canRedo(): boolean { return this.future.length > 0 }
 
+  clear(): void {
+    this.past = []
+    this.future = []
+  }
+
   /** Returns previous plan if available, null if at beginning. */
   undo(current: Plan): Plan | null {
     if (!this.past.length) return null
