@@ -78,6 +78,8 @@ export class PlanAnimator {
       const toPos = new THREE.Vector3(toTile.x, toTile.z, -toTile.y)
       const fromNormal = fromPos.clone().sub(globeCenter).normalize()
       const toNormal = toPos.clone().sub(globeCenter).normalize()
+      // Direction toward the destination tile — constant within this segment
+      const segmentForward = toPos.clone().sub(fromPos)
 
       const startTime = this.accumulatedDelta
       const endTime = startTime + SECONDS_PER_TILE
@@ -86,12 +88,12 @@ export class PlanAnimator {
         const t = Math.min(1, (this.accumulatedDelta - startTime) / SECONDS_PER_TILE)
         const interpPos = fromPos.clone().lerp(toPos, t)
         const interpNormal = fromNormal.clone().lerp(toNormal, t).normalize()
-        animRenderer.placeVehicleWorld(vehicleId, interpPos, interpNormal, surfaceOffset)
+        animRenderer.placeVehicleWorld(vehicleId, interpPos, interpNormal, segmentForward, surfaceOffset)
         await this.waitSeconds(0)
       }
 
       // Snap to exact destination
-      animRenderer.placeVehicleWorld(vehicleId, toPos, toNormal, surfaceOffset)
+      animRenderer.placeVehicleWorld(vehicleId, toPos, toNormal, segmentForward, surfaceOffset)
     }
 
     return pathTileIds.length - 1

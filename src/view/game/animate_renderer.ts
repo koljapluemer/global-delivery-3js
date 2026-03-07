@@ -11,7 +11,27 @@ import boatUrl from '../../assets/items/vehicles/boat.glb?url'
 
 const CRATE_SCALE = 0.004
 const CRATE_ON_VEHICLE_OFFSET = 0.015
-const UP = new THREE.Vector3(0, 1, 0)
+
+const LOCAL_Y = new THREE.Vector3(0, 1, 0)
+
+/**
+ * Build a vehicle quaternion:
+ *   local Y+ → outward normal (up, away from globe) — matches static GameItemRenderer placement
+ *   local Z+ → forward tangent (toward destination; Blender Y- exports as Three.js Z+)
+ *   local X+ → Y × Z (right side, right-hand rule)
+ */
+function vehicleQuaternion(outward: THREE.Vector3, forward: THREE.Vector3 | null): THREE.Quaternion {
+  const up = outward.clone().normalize()
+  if (forward) {
+    const tangent = forward.clone().sub(up.clone().multiplyScalar(forward.dot(up)))
+    if (tangent.lengthSq() > 1e-8) {
+      tangent.normalize()
+      const xAxis = new THREE.Vector3().crossVectors(up, tangent)
+      return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAxis, up, tangent))
+    }
+  }
+  return new THREE.Quaternion().setFromUnitVectors(LOCAL_Y, up)
+}
 
 const VEHICLE_MESH_URLS: Record<string, string> = {
   'assets/items/vehicles/car.glb': carUrl,
@@ -75,7 +95,7 @@ export class AnimateRenderer {
       const obj = gltf.scene.clone()
       cloneMaterials(obj)
       obj.scale.setScalar(vehicle.vehicleType.scale)
-      obj.quaternion.setFromUnitVectors(UP, wp.normal)
+      obj.quaternion.copy(vehicleQuaternion(wp.normal, null))
       obj.position.copy(wp.pos).addScaledVector(wp.normal, vehicle.vehicleType.offsetAlongNormal)
       applyPrimaryColor(obj, hsvColor(vehicle.hue))
 
@@ -94,7 +114,7 @@ export class AnimateRenderer {
       const obj = gltf.scene.clone()
       cloneMaterials(obj)
       obj.scale.setScalar(CRATE_SCALE)
-      obj.quaternion.setFromUnitVectors(UP, wp.normal)
+      obj.quaternion.setFromUnitVectors(LOCAL_Y, wp.normal)
       obj.position.copy(wp.pos)
 
       this.scene.add(obj)
@@ -118,8 +138,7 @@ export class AnimateRenderer {
           const obj = gltf.scene.clone()
           cloneMaterials(obj)
           obj.scale.setScalar(CRATE_SCALE)
-          const offset = new THREE.Vector3(0, CRATE_ON_VEHICLE_OFFSET * (slotIndex + 1), 0)
-          obj.position.copy(offset)
+          obj.position.set(0, CRATE_ON_VEHICLE_OFFSET * (slotIndex + 1), 0)
           vehicleMesh.add(obj)
           this.objects.push(obj)
           this.crateMeshes.set(crateId, obj)
@@ -138,10 +157,10 @@ export class AnimateRenderer {
     return this.crateMeshes.get(crateId)
   }
 
-  placeVehicleWorld(vehicleId: number, pos: THREE.Vector3, normal: THREE.Vector3, vehicleSurfaceOffset: number): void {
+  placeVehicleWorld(vehicleId: number, pos: THREE.Vector3, normal: THREE.Vector3, forward: THREE.Vector3 | null, vehicleSurfaceOffset: number): void {
     const mesh = this.vehicleMeshes.get(vehicleId)
     if (!mesh) return
-    mesh.quaternion.setFromUnitVectors(UP, normal)
+    mesh.quaternion.copy(vehicleQuaternion(normal, forward))
     mesh.position.copy(pos).addScaledVector(normal, vehicleSurfaceOffset)
   }
 
@@ -152,7 +171,7 @@ export class AnimateRenderer {
     this.detachCrateFromVehicle(crateId)
     const wp = tileWorldPos(tileId, tileApi, globeCenter)
     if (!wp) return
-    mesh.quaternion.setFromUnitVectors(UP, wp.normal)
+    mesh.quaternion.setFromUnitVectors(LOCAL_Y, wp.normal)
     mesh.position.copy(wp.pos)
   }
 
@@ -162,7 +181,7 @@ export class AnimateRenderer {
     if (!crate || !vehicle) return
     this.detachCrateFromVehicle(crateId)
     vehicle.add(crate)
-    // Position in vehicle-local space, stacked above
+    // Stack along local Z+ (outward from globe) on top of the vehicle
     crate.position.set(0, CRATE_ON_VEHICLE_OFFSET * (slotIndex + 1), 0)
     crate.quaternion.identity()
     this.crateVehicle.set(crateId, vehicleId)
