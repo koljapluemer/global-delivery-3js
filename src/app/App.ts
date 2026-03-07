@@ -55,6 +55,7 @@ export class App {
   private readonly deps: AppDeps
   private derived: DerivedPlanState
   private globeCenter = new THREE.Vector3()
+  private boundingSphere: THREE.Sphere | null = null
   private lastHoveredTile: TileCenter | null = null
   private labelRenderer: LabelRenderer | null = null
   private pinPlacementPreview: PinPlacementPreview | null = null
@@ -144,6 +145,7 @@ export class App {
       gameState,
     } = this.deps
 
+    this.boundingSphere = boundingSphere
     this.globeCenter.copy(boundingSphere.center)
     mainCamera.fitToGlobe(boundingSphere)
 
@@ -299,6 +301,11 @@ export class App {
     planPanel.hide()
     inspectorPanel.hide()
 
+    // Remove PLAN-mode 3D objects so they don't sit under the animated meshes
+    this.deps.gameItemRenderer.dispose()
+    this.labelRenderer?.dispose()
+    this.labelRenderer = null
+
     // Block all pointer interaction with an overlay
     const overlay = document.createElement('div')
     Object.assign(overlay.style, {
@@ -327,6 +334,20 @@ export class App {
     animRenderer.dispose()
 
     document.body.removeChild(overlay)
+
+    // Re-create label renderer so rerender() works normally in the next PLAN turn
+    if (this.boundingSphere) {
+      const { mainCamera } = this.deps
+      this.labelRenderer = new LabelRenderer(
+        mainCamera.camera,
+        this.boundingSphere.center,
+        this.boundingSphere.radius,
+      )
+      this.labelRenderer.onEntityClick = (target, worldPosition) => {
+        this.deps.inspectorPanel.show(target, this.deps.intentManager.getPlan(), this.derived, this.deps.tileCentersApi)
+        this.deps.mainCamera.panTo(worldPosition)
+      }
+    }
 
     onComplete(stats)
   }
