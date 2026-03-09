@@ -24,6 +24,7 @@ import type { PlanIntentManager } from '../controller/plan_intent_manager'
 import type { UndoRedoHistory } from '../controller/undo_redo'
 import type { NavApi } from '../controller/navigation'
 import type { TileCentersApi } from '../controller/layer_0/tile_centers_api'
+import type { CountryHoverBar } from '../view/ui/country_hover_bar'
 import type { DerivedPlanState, DerivedCargoStep } from '../model/types/DerivedPlanState'
 import type { GameState } from '../model/types/GameState'
 import type { TileCenter } from '../controller/layer_0/tile_centers_api'
@@ -49,6 +50,7 @@ export interface AppDeps {
   pinContextMenu: PinContextMenu
   crateLoadMenu: CrateLoadMenu
   gameState: GameState
+  countryHoverBar: CountryHoverBar
 }
 
 export class App {
@@ -162,6 +164,7 @@ export class App {
     pointer.onHover = createTileHoverHandler({
       setLastHoveredTile: (tile) => {
         this.lastHoveredTile = tile
+        this.deps.countryHoverBar.update(tile)
       },
       inputModeActor,
       getDerived: () => this.derived,

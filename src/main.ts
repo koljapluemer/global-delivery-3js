@@ -16,6 +16,7 @@ import { CancelButton } from './view/ui/overlay/cancel_button'
 import { PinContextMenu } from './view/ui/overlay/pin_context_menu'
 import { CrateLoadMenu } from './view/ui/overlay/crate_load_menu'
 import { App } from './app/App'
+import { CountryHoverBar } from './view/ui/country_hover_bar'
 import { MainMenuScreen } from './view/ui/screens/main_menu_screen'
 import { ShopScreen } from './view/ui/screens/shop_screen'
 import { StartLevelScreen } from './view/ui/screens/start_level_screen'
@@ -51,6 +52,8 @@ const pinContextMenu = new PinContextMenu()
 pinContextMenu.mount(document.body)
 const crateLoadMenu = new CrateLoadMenu()
 crateLoadMenu.mount(document.body)
+const countryHoverBar = new CountryHoverBar()
+countryHoverBar.mount(document.body)
 
 const mainMenuScreen = new MainMenuScreen()
 mainMenuScreen.mount(document.body)
@@ -80,6 +83,7 @@ const app = new App({
   pinContextMenu,
   crateLoadMenu,
   gameState,
+  countryHoverBar,
 })
 
 const flowController = new GameFlowController({
