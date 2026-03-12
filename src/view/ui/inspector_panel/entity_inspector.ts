@@ -138,5 +138,6 @@ export function inspectEntity(
   tileApi: TileCentersApi,
 ): InspectionContent {
   if (target.kind === 'VEHICLE') return inspectVehicle(target.id, plan, derived, tileApi)
-  return inspectCrate(target.id, plan, derived, tileApi)
+  if (target.kind === 'CRATE') return inspectCrate(target.id, plan, derived, tileApi)
+  throw new Error(`inspectEntity called with unhandled target kind: ${(target as EntityTarget).kind}`)
 }

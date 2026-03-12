@@ -32,6 +32,7 @@ import type { Actor } from 'xstate'
 import type { LevelStats } from '../model/types/LevelStats'
 import { AnimateRenderer } from '../view/game/animate_renderer'
 import { PlanAnimator } from '../controller/animate_mode/plan_animator'
+import { CountryHighlightRenderer } from '../view/game/country_highlight_renderer'
 
 export interface AppDeps {
   renderer: THREE.WebGLRenderer
@@ -66,6 +67,7 @@ export class App {
   private sceneInteractionManager: SceneInteractionManager | null = null
   private canvasInputController: CanvasInputController | null = null
   private frameCallback: ((delta: number) => void) | null = null
+  private countryHighlightRenderer: CountryHighlightRenderer | null = null
   onConfirmPlan: (() => void) | null = null
 
   constructor(deps: AppDeps) {
@@ -154,6 +156,7 @@ export class App {
     this.pinPlacementPreview = new PinPlacementPreview(globeScene.scene, navApi)
     this.crateDropPreview = new CrateDropPreview(globeScene.scene)
     this.crateLoadPreview = new CrateLoadPreview(globeScene.scene)
+    this.countryHighlightRenderer = new CountryHighlightRenderer(globeScene.scene, boundingSphere.center)
 
     const pointer = new GlobePointer(
       renderer.domElement,
@@ -199,6 +202,7 @@ export class App {
           boundingSphere.radius,
         )
         this.labelRenderer.onEntityClick = (target, worldPosition) => {
+          this.countryHighlightRenderer?.hide()
           inspectorPanel.show(
             target,
             intentManager.getPlan(),
@@ -207,6 +211,13 @@ export class App {
           )
           this.deps.mainCamera.panTo(worldPosition)
         }
+        this.labelRenderer.onLocateCountry = (countryName, nearHint) => {
+          this.countryHighlightRenderer?.hide()
+          const nearestTile = this.countryHighlightRenderer?.show(countryName, tileCentersApi, mainCamera.camera.position) ?? nearHint
+          inspectorPanel.show({ kind: 'COUNTRY', countryName }, intentManager.getPlan(), this.derived, tileCentersApi)
+          mainCamera.panTo(nearestTile)
+        }
+        inspectorPanel.onClose = () => { this.countryHighlightRenderer?.hide() }
         const plan = intentManager.getPlan()
         const legs = deriveRouteLegs(this.derived)
         this.labelRenderer.syncCrateLabels(plan, tileCentersApi)
@@ -347,8 +358,15 @@ export class App {
         this.boundingSphere.radius,
       )
       this.labelRenderer.onEntityClick = (target, worldPosition) => {
+        this.countryHighlightRenderer?.hide()
         this.deps.inspectorPanel.show(target, this.deps.intentManager.getPlan(), this.derived, this.deps.tileCentersApi)
         this.deps.mainCamera.panTo(worldPosition)
+      }
+      this.labelRenderer.onLocateCountry = (countryName, nearHint) => {
+        this.countryHighlightRenderer?.hide()
+        const nearestTile = this.countryHighlightRenderer?.show(countryName, this.deps.tileCentersApi, this.deps.mainCamera.camera.position) ?? nearHint
+        this.deps.inspectorPanel.show({ kind: 'COUNTRY', countryName }, this.deps.intentManager.getPlan(), this.derived, this.deps.tileCentersApi)
+        this.deps.mainCamera.panTo(nearestTile)
       }
     }
 

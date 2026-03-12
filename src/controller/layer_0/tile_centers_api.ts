@@ -41,4 +41,8 @@ export class TileCentersApi {
   getByCountry(countryId: string): readonly TileCenter[] {
     return this.tiles.filter((t) => t.country_id === countryId)
   }
+
+  getByCountryName(name: string): readonly TileCenter[] {
+    return this.tiles.filter((t) => t.country_name === name)
+  }
 }

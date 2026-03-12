@@ -15,6 +15,8 @@ export class InspectorPanel {
   onRemoveCargoIntent: ((stepIndex: number) => void) | null = null
   /** Called when the user initiates an unload from a journey step. */
   onUnloadFromStep: ((vehicleId: number, stepIndex: number, crateId: number) => void) | null = null
+  /** Called when the panel is closed via the close button. */
+  onClose: (() => void) | null = null
 
   private aside: HTMLElement | null = null
   private body: HTMLElement | null = null
@@ -52,9 +54,13 @@ export class InspectorPanel {
   show(target: EntityTarget, plan: Plan, derived: DerivedPlanState, tileApi: TileCentersApi): void {
     if (!this.aside || !this.body) return
     this.currentTarget = target
-    const content = inspectEntity(target, plan, derived, tileApi)
     this.body.innerHTML = ''
-    this.renderContent(content, target, this.body)
+    if (target.kind === 'COUNTRY') {
+      this.renderCountryContent(target.countryName, this.body)
+    } else {
+      const content = inspectEntity(target, plan, derived, tileApi)
+      this.renderContent(content, target, this.body)
+    }
     this.aside.style.display = 'block'
   }
 
@@ -66,6 +72,18 @@ export class InspectorPanel {
   hide(): void {
     if (this.aside) this.aside.style.display = 'none'
     this.currentTarget = null
+    this.onClose?.()
+  }
+
+  private renderCountryContent(countryName: string, container: HTMLElement): void {
+    const heading = document.createElement('h2')
+    heading.textContent = countryName
+    container.appendChild(heading)
+
+    const note = document.createElement('p')
+    note.textContent = 'Destination country'
+    Object.assign(note.style, { fontSize: '12px', color: '#aaa', margin: '0.25rem 0 0' })
+    container.appendChild(note)
   }
 
   private renderContent(content: InspectionContent, target: EntityTarget, container: HTMLElement): void {

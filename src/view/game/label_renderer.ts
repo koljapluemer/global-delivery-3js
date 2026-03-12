@@ -52,6 +52,7 @@ export class LabelRenderer {
   private readonly globeCenter: THREE.Vector3
   private readonly globeRadius: number
   onEntityClick: ((target: EntityTarget, worldPosition: THREE.Vector3) => void) | null = null
+  onLocateCountry: ((countryName: string, nearHint: THREE.Vector3) => void) | null = null
   private container: HTMLDivElement
   private labels = new Map<number, LabelEntry>()
   private vehicleLabels = new Map<number, LabelEntry>()
@@ -83,7 +84,7 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.entityId)
       if (!this.labels.has(item.entityId)) {
-        const { el, textEl } = this.createBubble(item.destinationCountry, item.rewardMoney, item.rewardStamps)
+        const { el, textEl, locateBtn } = this.createBubble(item.destinationCountry, item.rewardMoney, item.rewardStamps)
         this.container.appendChild(el)
         const entry: LabelEntry = {
           el,
@@ -95,6 +96,10 @@ export class LabelRenderer {
         el.addEventListener('click', (e) => {
           e.stopPropagation()
           this.onEntityClick?.({ kind: 'CRATE', id: item.entityId }, entry.worldPos.clone())
+        })
+        locateBtn.addEventListener('click', (e) => {
+          e.stopPropagation()
+          this.onLocateCountry?.(item.destinationCountry, entry.worldPos.clone())
         })
       } else {
         const entry = this.labels.get(item.entityId)!
@@ -296,7 +301,7 @@ export class LabelRenderer {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private createBubble(destination: string, rewardMoney: number, rewardStamps: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
+  private createBubble(destination: string, rewardMoney: number, rewardStamps: number): { el: HTMLDivElement; textEl: HTMLSpanElement; locateBtn: HTMLButtonElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',
@@ -314,6 +319,27 @@ export class LabelRenderer {
       pointerEvents: 'auto',
       cursor: 'pointer',
     })
+
+    const locateBtn = document.createElement('button')
+    locateBtn.title = 'Locate country'
+    locateBtn.textContent = '🎯'
+    Object.assign(locateBtn.style, {
+      position: 'absolute',
+      top: '4px',
+      right: '4px',
+      width: '16px',
+      height: '16px',
+      padding: '0',
+      fontSize: '10px',
+      lineHeight: '16px',
+      textAlign: 'center',
+      background: 'rgba(255,255,255,0.6)',
+      border: 'none',
+      borderRadius: '50%',
+      cursor: 'pointer',
+      pointerEvents: 'auto',
+    })
+    el.appendChild(locateBtn)
 
     const textEl = document.createElement('span')
     textEl.textContent = '→ ' + destination
@@ -336,7 +362,7 @@ export class LabelRenderer {
 
     el.appendChild(textEl)
     el.appendChild(rewardEl)
-    return { el, textEl }
+    return { el, textEl, locateBtn }
   }
 
   private createVehicleBubble(vehicleName: string, hue: number): { el: HTMLDivElement; textEl: HTMLSpanElement } {
