@@ -36,6 +36,7 @@ interface LabelEntry {
   worldPos: THREE.Vector3
   smoothRot: number
   id?: string
+  destinationCountry?: string
 }
 
 interface RouteLegLabelEntry {
@@ -91,6 +92,7 @@ export class LabelRenderer {
           textEl,
           worldPos: item.worldPosition.clone(),
           smoothRot: 0,
+          destinationCountry: item.destinationCountry,
         }
         this.labels.set(item.entityId, entry)
         el.addEventListener('click', (e) => {
@@ -99,11 +101,12 @@ export class LabelRenderer {
         })
         locateBtn.addEventListener('click', (e) => {
           e.stopPropagation()
-          this.onLocateCountry?.(item.destinationCountry, entry.worldPos.clone())
+          this.onLocateCountry?.(entry.destinationCountry!, entry.worldPos.clone())
         })
       } else {
         const entry = this.labels.get(item.entityId)!
         entry.worldPos.copy(item.worldPosition)
+        entry.destinationCountry = item.destinationCountry
         entry.textEl.textContent = '→ ' + item.destinationCountry
       }
     }
