@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { createElement, MapPin } from 'lucide'
 import speechBubbleUrl from '../../assets/ui/speechbubble.png?url'
 import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
 import vehicleBubbleSvgRaw from '../../assets/ui/vehicle_bubble.svg?raw'
@@ -325,7 +326,7 @@ export class LabelRenderer {
 
     const locateBtn = document.createElement('button')
     locateBtn.title = 'Locate country'
-    locateBtn.textContent = '🎯'
+    locateBtn.appendChild(createElement(MapPin, { width: 10, height: 10 }))
     Object.assign(locateBtn.style, {
       position: 'absolute',
       top: '4px',
@@ -333,9 +334,10 @@ export class LabelRenderer {
       width: '16px',
       height: '16px',
       padding: '0',
-      fontSize: '10px',
-      lineHeight: '16px',
-      textAlign: 'center',
+      lineHeight: '0',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
       background: 'rgba(255,255,255,0.6)',
       border: 'none',
       borderRadius: '50%',
