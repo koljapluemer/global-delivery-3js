@@ -1,0 +1,1 @@
+# Make the shop a meaningful screen
