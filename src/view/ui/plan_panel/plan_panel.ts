@@ -3,6 +3,8 @@ import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/
 import type { Plan, CargoIntent } from '../../../model/types/Plan'
 import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep, DerivedCargoAction } from '../../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
+import type { EntityTarget } from '../../../model/types/EntityTarget'
+import { snapshotBefore } from '../../../controller/plan_deriver'
 
 const DROP_ZONE_STYLE: Record<string, string> = {
   minHeight: '24px',
@@ -28,6 +30,8 @@ export class PlanPanel {
   onMoveJourneyIntentIntoStep: ((vehicleId: number, fromStepIndex: number, toStepIndex: number) => void) | null = null
   onMoveCargoStep: ((fromStepIndex: number, toAfterStepIndex: number) => void) | null = null
   onConfirmPlan: (() => void) | null = null
+  onFocusTile: ((tileId: number) => void) | null = null
+  onFocusEntity: ((target: EntityTarget) => void) | null = null
 
   private containerEl: HTMLElement | null = null
   private aside: HTMLElement | null = null
@@ -169,11 +173,13 @@ export class PlanPanel {
     }
 
     const steps = derived.steps
+    let journeyNum = 0
     for (let i = 0; i < steps.length; i++) {
       if (i === 0) this.aside.appendChild(this.createGhostZone('before-all'))
       const step = steps[i]
       if (step.kind === 'JOURNEY') {
-        this.aside.appendChild(this.buildJourneySection(step as DerivedJourneyStep, plan))
+        journeyNum++
+        this.aside.appendChild(this.buildJourneySection(step as DerivedJourneyStep, plan, journeyNum))
       } else {
         this.aside.appendChild(this.buildCargoSection(step as DerivedCargoStep, plan))
       }
@@ -296,7 +302,7 @@ export class PlanPanel {
     this.aside?.classList.remove('plan-panel-dragging')
   }
 
-  private buildJourneySection(step: DerivedJourneyStep, plan: Plan): HTMLElement {
+  private buildJourneySection(step: DerivedJourneyStep, plan: Plan, journeyNum: number): HTMLElement {
     const section = document.createElement('section')
     section.dataset.stepIndex = String(step.stepIndex)
     Object.assign(section.style, { marginBottom: '0.75rem' })
@@ -311,7 +317,7 @@ export class PlanPanel {
       fontWeight: 'bold',
     })
     const labelSpan = document.createElement('span')
-    labelSpan.textContent = `Journey #${step.stepIndex}`
+    labelSpan.textContent = `Journey ${journeyNum}`
     heading.appendChild(labelSpan)
     if (step.stepTraveltime > 0) {
       const ttSpan = document.createElement('span')
@@ -348,7 +354,12 @@ export class PlanPanel {
 
       const text = document.createElement('span')
       text.textContent = `${vehicle?.name ?? '?'} → ${destText}`
-      Object.assign(text.style, { fontSize: '12px', flex: '1' })
+      Object.assign(text.style, { fontSize: '12px', flex: '1', cursor: 'pointer' })
+      text.addEventListener('click', (e) => {
+        e.stopPropagation()
+        this.onFocusTile?.(j.toTileId)
+        this.onFocusEntity?.({ kind: 'VEHICLE', id: j.vehicleId })
+      })
 
       const removeBtn = document.createElement('button')
       removeBtn.title = 'Remove journey'
@@ -415,7 +426,21 @@ export class PlanPanel {
 
     const text = document.createElement('span')
     text.textContent = this.describeCargoIntent(action.intent, plan)
-    Object.assign(text.style, { fontSize: '11px', flex: '1' })
+    Object.assign(text.style, { fontSize: '11px', flex: '1', cursor: 'pointer' })
+    text.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const intent = action.intent
+      let tileId: number | undefined
+      if (intent.kind === 'LOAD') {
+        tileId = this.currentDerived
+          ? snapshotBefore(this.currentDerived, stepIndex).vehiclePositions.get(intent.vehicleId)
+          : undefined
+      } else {
+        tileId = intent.toTileId
+      }
+      if (tileId !== undefined) this.onFocusTile?.(tileId)
+      this.onFocusEntity?.({ kind: 'CRATE', id: intent.crateId })
+    })
 
     if (!action.valid && action.invalidReason) {
       const warn = document.createElement('span')

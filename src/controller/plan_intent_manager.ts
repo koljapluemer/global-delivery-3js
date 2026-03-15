@@ -7,7 +7,10 @@ export class PlanIntentManager {
   constructor(plan: Plan) { this.plan = plan }
 
   getPlan(): Plan { return this.plan }
-  resetPlan(plan: Plan): void { this.plan = plan }
+  resetPlan(plan: Plan): void {
+    this.plan = plan
+    this.pruneAndMerge()
+  }
 
   /** Add a new crate on the ground at tileId. Returns the new crateId. */
   addGroundCrate(tileId: number, crate: Crate): number {
@@ -159,7 +162,7 @@ export class PlanIntentManager {
   // Internal
   // ---------------------------------------------------------------------------
 
-  private pruneAndMerge(): void {
+  pruneAndMerge(): void {
     let changed = true
     while (changed) {
       changed = false

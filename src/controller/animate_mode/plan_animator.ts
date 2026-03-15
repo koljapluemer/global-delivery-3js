@@ -20,6 +20,8 @@ export interface PlanAnimatorRunOptions {
   animRenderer: AnimateRenderer
   gameState: GameState
   onHudUpdate: () => void
+  trackedVehicleId?: number
+  onTrackTile?: (tileId: number) => void
 }
 
 /**
@@ -63,6 +65,7 @@ export class PlanAnimator {
     tileApi: TileCentersApi,
     globeCenter: THREE.Vector3,
     animRenderer: AnimateRenderer,
+    opts?: { trackedVehicleId?: number; onTrackTile?: (tileId: number) => void },
   ): Promise<number> {
     const vehicle = plan.vehicles[vehicleId]
     if (!vehicle || pathTileIds.length < 2) return 0
@@ -70,6 +73,9 @@ export class PlanAnimator {
     const surfaceOffset = vehicle.vehicleType.offsetAlongNormal
 
     for (let i = 0; i < pathTileIds.length - 1; i++) {
+      if (vehicleId === opts?.trackedVehicleId) {
+        opts.onTrackTile?.(pathTileIds[i + 1])
+      }
       const fromTile = tileApi.getTileById(pathTileIds[i])
       const toTile = tileApi.getTileById(pathTileIds[i + 1])
       if (!fromTile || !toTile) continue
@@ -100,7 +106,7 @@ export class PlanAnimator {
   }
 
   async run(opts: PlanAnimatorRunOptions): Promise<LevelStats> {
-    const { plan, derived, tileApi, globeCenter, animRenderer, gameState, onHudUpdate } = opts
+    const { plan, derived, tileApi, globeCenter, animRenderer, gameState, onHudUpdate, trackedVehicleId, onTrackTile } = opts
 
     await animRenderer.setup(plan, derived.initialSnapshot, tileApi, globeCenter)
 
@@ -118,6 +124,7 @@ export class PlanAnimator {
             if (j.pathTileIds.length < 2) return
             const tilesTraversed = await this.animateVehicleAlongPath(
               j.vehicleId, j.pathTileIds, plan, tileApi, globeCenter, animRenderer,
+              { trackedVehicleId, onTrackTile },
             )
             stats.pathTilesTraversed += tilesTraversed
           }),
