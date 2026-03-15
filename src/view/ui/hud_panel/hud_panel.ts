@@ -1,5 +1,6 @@
-import { createElement, DollarSign, Star, Clock, Undo2, Redo2, Download } from 'lucide'
+import { createElement, DollarSign, Star, Clock, Undo2, Redo2, Download, Heart } from 'lucide'
 import type { GameState } from '../../../model/types/GameState'
+import { INITIAL_LIVES } from '../../../controller/game_flow/game_flow_machine'
 
 export class HudPanel {
   onUndo: (() => void) | null = null
@@ -36,11 +37,9 @@ export class HudPanel {
     if (!this.el) return
     this.el.innerHTML = ''
 
+    // Left side: empty (intentionally blank for potential future use)
     const left = document.createElement('div')
-    Object.assign(left.style, { display: 'flex', alignItems: 'center', gap: '1.25rem' })
-
-    left.appendChild(this.makeBadge(createElement(DollarSign, { width: 14, height: 14 }), String(gameState.money)))
-    left.appendChild(this.makeBadge(createElement(Star, { width: 14, height: 14 }), String(gameState.stamps)))
+    Object.assign(left.style, { display: 'flex', alignItems: 'center', minWidth: '120px' })
 
     const center = document.createElement('div')
     Object.assign(center.style, { display: 'flex', alignItems: 'center', gap: '4px' })
@@ -60,6 +59,7 @@ export class HudPanel {
     })
     undoBtn.disabled = !canUndo
     undoBtn.addEventListener('click', () => { this.onUndo?.() })
+
     const redoBtn = document.createElement('button')
     redoBtn.title = 'Redo (Ctrl+Y)'
     redoBtn.appendChild(createElement(Redo2, { width: 16, height: 16 }))
@@ -95,15 +95,44 @@ export class HudPanel {
     center.appendChild(redoBtn)
     center.appendChild(downloadSnapshotsBtn)
 
+    // Right side: lives | money | stamps n/goal | travel budget
     const right = document.createElement('div')
-    Object.assign(right.style, { display: 'flex', alignItems: 'center', gap: '0.4rem' })
-    right.appendChild(createElement(Clock, { width: 14, height: 14 }))
+    Object.assign(right.style, { display: 'flex', alignItems: 'center', gap: '1.25rem' })
+
+    // Lives: Heart icons (show INITIAL_LIVES total, dim the lost ones)
+    const livesWrap = document.createElement('div')
+    Object.assign(livesWrap.style, { display: 'flex', alignItems: 'center', gap: '2px' })
+    for (let i = 0; i < INITIAL_LIVES; i++) {
+      const heartIcon = createElement(Heart, { width: 14, height: 14 })
+      const alive = i < gameState.lives
+      heartIcon.style.opacity = alive ? '1' : '0.2'
+      heartIcon.style.color = alive ? '#ff6b6b' : '#fff'
+      livesWrap.appendChild(heartIcon)
+    }
+    right.appendChild(livesWrap)
+
+    // Money
+    right.appendChild(this.makeBadge(createElement(DollarSign, { width: 14, height: 14 }), String(gameState.money)))
+
+    // Stamps n/goal
+    const stampsUnderGoal = gameState.stamps < gameState.stampsGoal
+    right.appendChild(this.makeBadge(
+      createElement(Star, { width: 14, height: 14 }),
+      `${gameState.stamps} / ${gameState.stampsGoal}`,
+      stampsUnderGoal ? '#ff6b6b' : undefined,
+    ))
+
+    // Travel budget
+    const ttWrap = document.createElement('div')
+    Object.assign(ttWrap.style, { display: 'flex', alignItems: 'center', gap: '0.4rem' })
+    ttWrap.appendChild(createElement(Clock, { width: 14, height: 14 }))
     const ttText = document.createElement('span')
     Object.assign(ttText.style, { fontSize: '13px', fontVariantNumeric: 'tabular-nums' })
     ttText.textContent = `${traveltimeUsed} / ${gameState.traveltimeBudget}`
     const overBudget = traveltimeUsed > gameState.traveltimeBudget
     ttText.style.color = overBudget ? '#ff6b6b' : '#fff'
-    right.appendChild(ttText)
+    ttWrap.appendChild(ttText)
+    right.appendChild(ttWrap)
 
     this.el.appendChild(left)
     this.el.appendChild(center)
@@ -118,12 +147,14 @@ export class HudPanel {
     if (this.el) this.el.style.display = 'flex'
   }
 
-  private makeBadge(icon: SVGElement, value: string): HTMLElement {
+  private makeBadge(icon: SVGElement, value: string, color?: string): HTMLElement {
     const wrap = document.createElement('div')
     Object.assign(wrap.style, { display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '13px' })
+    if (color) icon.style.color = color
     wrap.appendChild(icon)
     const span = document.createElement('span')
     span.textContent = value
+    if (color) span.style.color = color
     wrap.appendChild(span)
     return wrap
   }

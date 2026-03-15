@@ -7,20 +7,16 @@ const SCREEN_STYLE: Partial<CSSStyleDeclaration> = {
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '1.5rem',
+  gap: '2rem',
   color: '#fff',
 }
 
-const HEADING_STYLE: Partial<CSSStyleDeclaration> = {
-  fontSize: '1.8rem',
+const TITLE_STYLE: Partial<CSSStyleDeclaration> = {
+  fontSize: '2.5rem',
   fontWeight: '700',
+  letterSpacing: '0.05em',
   margin: '0',
-}
-
-const GOAL_STYLE: Partial<CSSStyleDeclaration> = {
-  fontSize: '1.1rem',
-  color: 'rgba(255,255,255,0.75)',
-  margin: '0',
+  color: '#ff6b6b',
 }
 
 const BUTTON_STYLE: Partial<CSSStyleDeclaration> = {
@@ -33,35 +29,30 @@ const BUTTON_STYLE: Partial<CSSStyleDeclaration> = {
   borderRadius: '8px',
   cursor: 'pointer',
   letterSpacing: '0.04em',
-  marginTop: '0.5rem',
 }
 
-export class StartLevelScreen {
-  onStartLevel: (() => void) | null = null
+export class GameOverScreen {
+  onRestart: (() => void) | null = null
 
   private el: HTMLElement | null = null
 
   mount(container: HTMLElement): void {
     const div = document.createElement('div')
     Object.assign(div.style, SCREEN_STYLE)
+    div.style.display = 'none'
 
-    const heading = document.createElement('h2')
-    Object.assign(heading.style, HEADING_STYLE)
-    heading.textContent = 'New Level'
-
-    const goal = document.createElement('p')
-    Object.assign(goal.style, GOAL_STYLE)
-    goal.textContent = 'Earn at least 10 stamps'
+    const title = document.createElement('h1')
+    Object.assign(title.style, TITLE_STYLE)
+    title.textContent = 'Game Over'
 
     const btn = document.createElement('button')
     Object.assign(btn.style, BUTTON_STYLE)
-    btn.textContent = 'Start Level'
-    btn.addEventListener('click', () => this.onStartLevel?.())
+    btn.textContent = 'Play Again'
+    btn.addEventListener('click', () => this.onRestart?.())
     btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.2)' })
     btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.12)' })
 
-    div.appendChild(heading)
-    div.appendChild(goal)
+    div.appendChild(title)
     div.appendChild(btn)
     this.el = div
     container.appendChild(div)

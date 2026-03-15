@@ -32,6 +32,7 @@ import type { Actor } from 'xstate'
 import type { LevelStats } from '../model/types/LevelStats'
 import { AnimateRenderer } from '../view/game/animate_renderer'
 import { PlanAnimator } from '../controller/animate_mode/plan_animator'
+import { CrateArrivalAnimator } from '../controller/animate_mode/crate_arrival_animator'
 import { CountryHighlightRenderer } from '../view/game/country_highlight_renderer'
 
 export interface AppDeps {
@@ -305,9 +306,28 @@ export class App {
     planPanel.show()
   }
 
+  async runCrateArrivalAnimation(crateId: number, tileId: number): Promise<void> {
+    const { globeScene, mainCamera, tileCentersApi, intentManager } = this.deps
+
+    const tile = tileCentersApi.getTileById(tileId)
+    if (tile) {
+      const worldPos = new THREE.Vector3(tile.x, tile.z, -tile.y)
+      mainCamera.panTo(worldPos)
+    }
+
+    const animator = new CrateArrivalAnimator()
+    this.frameCallback = (delta) => animator.tick(delta)
+    await animator.run(tileId, this.globeCenter, tileCentersApi, globeScene.scene)
+    this.frameCallback = null
+    animator.dispose()
+
+    // Sync the new crate label with a pop-in animation
+    this.labelRenderer?.syncCrateLabels(intentManager.getPlan(), tileCentersApi, new Set([crateId]))
+  }
+
   async enterAnimateMode(
     onHudUpdate: () => void,
-    onComplete: (stats: LevelStats) => void,
+    onComplete: (stats: LevelStats) => void | Promise<void>,
   ): Promise<void> {
     const { globeScene, planPanel, inspectorPanel, tileCentersApi, gameState } = this.deps
 
@@ -370,7 +390,7 @@ export class App {
       }
     }
 
-    onComplete(stats)
+    await Promise.resolve(onComplete(stats))
   }
 
   advancePlanToNextTurn(): void {

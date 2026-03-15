@@ -78,15 +78,34 @@ export class LabelRenderer {
       overflow: 'hidden',
     })
     document.body.appendChild(this.container)
+
+    // Inject keyframes for crate arrival animation (idempotent — only added once)
+    if (!document.getElementById('label-renderer-styles')) {
+      const style = document.createElement('style')
+      style.id = 'label-renderer-styles'
+      style.textContent = `
+        @keyframes crateArrival {
+          0%   { opacity: 0; transform: translateX(-50%) translateY(-130%) scale(0.4); }
+          60%  { opacity: 1; transform: translateX(-50%) translateY(-90%) scale(1.1); }
+          100% { transform: translateX(-50%) translateY(-100%) scale(1); opacity: 1; }
+        }
+        .crate-arrive { animation: crateArrival 0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
+      `
+      document.head.appendChild(style)
+    }
   }
 
-  /** Sync label set to match the provided data. Creates / updates / removes as needed. */
-  setCrateLabels(data: CrateLabelData[]): void {
+  /** Sync label set to match the provided data. Creates / updates / removes as needed.
+   *  IDs in animateInIds get a CSS pop-in animation when first created. */
+  setCrateLabels(data: CrateLabelData[], animateInIds?: Set<number>): void {
     const seen = new Set<number>()
     for (const item of data) {
       seen.add(item.entityId)
       if (!this.labels.has(item.entityId)) {
         const { el, textEl, locateBtn } = this.createBubble(item.destinationCountry, item.rewardMoney, item.rewardStamps)
+        if (animateInIds?.has(item.entityId)) {
+          el.classList.add('crate-arrive')
+        }
         this.container.appendChild(el)
         const entry: LabelEntry = {
           el,
@@ -120,7 +139,7 @@ export class LabelRenderer {
   }
 
   /** Build crate label data from plan.initialState and push it to the label set. */
-  syncCrateLabels(plan: Plan, tileApi: TileCentersApi): void {
+  syncCrateLabels(plan: Plan, tileApi: TileCentersApi, animateInIds?: Set<number>): void {
     const data: CrateLabelData[] = []
     for (const [crateIdStr, tileId] of Object.entries(plan.initialState.cratePositions)) {
       const id = Number(crateIdStr)
@@ -136,7 +155,7 @@ export class LabelRenderer {
         entityId: id,
       })
     }
-    this.setCrateLabels(data)
+    this.setCrateLabels(data, animateInIds)
   }
 
   /** Sync vehicle bubble labels. Creates / updates / removes as needed. */

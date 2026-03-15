@@ -1,4 +1,5 @@
 import type { Plan, PlanStep, JourneyStep, JourneyIntent, CargoStep, CargoIntent } from '../model/types/Plan'
+import type { Crate } from '../model/types/Crate'
 
 export class PlanIntentManager {
   private plan: Plan
@@ -7,6 +8,15 @@ export class PlanIntentManager {
 
   getPlan(): Plan { return this.plan }
   resetPlan(plan: Plan): void { this.plan = plan }
+
+  /** Add a new crate on the ground at tileId. Returns the new crateId. */
+  addGroundCrate(tileId: number, crate: Crate): number {
+    const ids = Object.keys(this.plan.crates).map(Number)
+    const newId = ids.length > 0 ? Math.max(...ids) + 1 : 0
+    this.plan.crates[newId] = crate
+    this.plan.initialState.cratePositions[newId] = tileId
+    return newId
+  }
 
   // ---------------------------------------------------------------------------
   // Journey intents

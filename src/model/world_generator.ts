@@ -17,6 +17,13 @@ function uniqueCountryNames(tileApi: TileCentersApi): string[] {
   return Array.from(seen)
 }
 
+export function createRandomCrate(countryNames: string[]): Crate {
+  const rewardMoney = (Math.floor(Math.random() * 20) + 1) * 50
+  const rewardStamps = Math.floor(Math.random() * 5) + 1
+  const destinationCountry = pickRandom(countryNames)
+  return { destinationCountry, rewardMoney, rewardStamps }
+}
+
 export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): Plan {
   const landNodeIds = navApi.getLargestComponentNodeIds('LAND')
   const waterNodeIds = navApi.getLargestComponentNodeIds('WATER')
@@ -65,17 +72,14 @@ export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): P
 
   const crates: Record<number, Crate> = {}
   for (let i = 0; i < 6; i++) {
-    const rewardMoney = (Math.floor(Math.random() * 20) + 1) * 50
-    const rewardStamps = Math.floor(Math.random() * 5) + 1
-    const destinationCountry = pickRandom(countryNames)
-    crates[i] = { destinationCountry, rewardMoney, rewardStamps }
+    crates[i] = createRandomCrate(countryNames)
   }
 
   return {
     vehicles,
     crates,
     initialState: {
-      vehiclePositions: { 0: carTileId, 1: boatTileId, 2:carTileId2 },
+      vehiclePositions: { 0: carTileId, 1: boatTileId, 2: carTileId2 },
       cratePositions: Object.fromEntries(crateTileIds.map((id, i) => [i, id])),
     },
     steps: [],
