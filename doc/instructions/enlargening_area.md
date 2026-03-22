@@ -1,0 +1,1 @@
+consider: slowly enlargening area around first randomly placed vehicle, for both delivery and drop?

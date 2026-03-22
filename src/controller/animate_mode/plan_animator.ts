@@ -29,13 +29,14 @@ export interface PlanAnimatorRunOptions {
  * Driven by tick() calls from the render loop.
  */
 export class PlanAnimator {
-  private tickResolve: (() => void) | null = null
+  private tickResolves: Array<() => void> = []
   private accumulatedDelta = 0
 
   /** Called each frame by the render loop with the delta time in seconds. */
   tick(delta: number): void {
     this.accumulatedDelta += delta
-    this.tickResolve?.()
+    const cbs = this.tickResolves.splice(0)
+    for (const cb of cbs) cb()
   }
 
   /** Awaits until at least `seconds` of real time have elapsed (via tick calls). */
@@ -44,13 +45,12 @@ export class PlanAnimator {
     return new Promise((resolve) => {
       const check = () => {
         if (this.accumulatedDelta >= target) {
-          this.tickResolve = null
           resolve()
         } else {
-          this.tickResolve = check
+          this.tickResolves.push(check)
         }
       }
-      this.tickResolve = check
+      this.tickResolves.push(check)
     })
   }
 
