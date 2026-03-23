@@ -120,7 +120,10 @@ export class PlanAnimator {
       if (step.kind === 'JOURNEY') {
         const journeyStep = step as DerivedJourneyStep
         // Pick a vehicle moving this step and pan to it before animating
-        const movingJourney = journeyStep.journeys.find((j) => j.pathTileIds.length >= 2)
+        const movingJourney = journeyStep.journeys.reduce<typeof journeyStep.journeys[0] | undefined>(
+          (best, j) => j.pathTileIds.length >= 2 && (!best || j.pathTileIds.length > best.pathTileIds.length) ? j : best,
+          undefined,
+        )
         if (movingJourney && onTrackTile) {
           onTrackTile(movingJourney.pathTileIds[0])
           await this.waitSeconds(PRE_STEP_PAN_WAIT)
