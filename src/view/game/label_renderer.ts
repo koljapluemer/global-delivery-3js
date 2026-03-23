@@ -217,16 +217,18 @@ export class LabelRenderer {
   syncPinsFromPlan(plan: Plan, tileApi: TileCentersApi): void {
     const data: Array<{ worldPosition: THREE.Vector3; label: string; id: string; vehicleId: number; stepIndex: number }> = []
 
+    let journeyNum = 0
     for (let i = 0; i < plan.steps.length; i++) {
       const step = plan.steps[i]
       if (step.kind !== 'JOURNEY') continue
+      journeyNum++
       for (const journey of step.journeys) {
         const { vehicleId, toTileId } = journey
         const tile = tileApi.getTileById(toTileId)
         if (!tile) continue
         data.push({
           worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
-          label: `#${i}`,
+          label: `#${journeyNum}`,
           id: `${vehicleId}-${i}`,
           vehicleId,
           stepIndex: i,
@@ -247,7 +249,9 @@ export class LabelRenderer {
           this.openPinMenu(item.vehicleId, item.stepIndex)
         })
       } else {
-        this.pinLabels.get(item.id)!.worldPos.copy(item.worldPosition)
+        const entry = this.pinLabels.get(item.id)!
+        entry.worldPos.copy(item.worldPosition)
+        entry.textEl.textContent = item.label
       }
     }
     for (const [id, entry] of this.pinLabels) {

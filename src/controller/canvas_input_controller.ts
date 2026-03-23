@@ -214,7 +214,7 @@ export class CanvasInputController {
       if (lastHoveredTile) {
         undoHistory.snapshot(plan)
         if (ctx.insertAfterStepIndex !== undefined) {
-          intentManager.insertJourneyStepAfter(ctx.insertAfterStepIndex, ctx.vehicleId!, lastHoveredTile.tile_id)
+          intentManager.addOrMergeJourneyAfter(ctx.insertAfterStepIndex, ctx.vehicleId!, lastHoveredTile.tile_id)
         } else {
           intentManager.addPinAfterLastVehicleStep(ctx.vehicleId!, lastHoveredTile.tile_id)
         }

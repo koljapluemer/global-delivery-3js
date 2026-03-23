@@ -43,8 +43,7 @@ export class PlanIntentManager {
   /** Insert a new journey (pin) for vehicleId → toTileId directly after the last step involving this vehicle. */
   addPinAfterLastVehicleStep(vehicleId: number, toTileId: number): number {
     const afterIndex = this.getLastStepIndexInvolvingVehicle(vehicleId)
-    this.insertJourneyStepAfter(afterIndex, vehicleId, toTileId)
-    return afterIndex + 1
+    return this.addOrMergeJourneyAfter(afterIndex, vehicleId, toTileId)
   }
 
   /** Update destination of an existing journey intent. */
@@ -114,6 +113,35 @@ export class PlanIntentManager {
       this.plan.steps.splice(afterIndex + 1, 0, newStep)
     }
     this.pruneAndMerge()
+  }
+
+  /** Add vehicleId→toTileId after afterIndex, merging into the first existing journey step
+   *  (after afterIndex) that doesn't already have this vehicle. Falls back to inserting a new
+   *  step at afterIndex+1 if no suitable step exists. Returns the landing step index. */
+  addOrMergeJourneyAfter(afterIndex: number, vehicleId: number, toTileId: number): number {
+    // Advance past cargo steps for this vehicle between afterIndex and the next journey step.
+    // Those cargo ops depend on the vehicle staying put, so the new journey must come after them.
+    let effectiveAfter = afterIndex
+    for (let i = afterIndex + 1; i < this.plan.steps.length; i++) {
+      const step = this.plan.steps[i]
+      if (step.kind === 'JOURNEY') break
+      const a = step.action
+      if ((a.kind === 'LOAD' || a.kind === 'UNLOAD' || a.kind === 'DELIVER') && a.vehicleId === vehicleId) {
+        effectiveAfter = i
+      }
+    }
+    // Try to merge into the first journey step after effectiveAfter that doesn't have this vehicle
+    for (let i = effectiveAfter + 1; i < this.plan.steps.length; i++) {
+      const step = this.plan.steps[i]
+      if (step.kind === 'JOURNEY' && !step.journeys.some((j) => j.vehicleId === vehicleId)) {
+        step.journeys.push({ vehicleId, toTileId })
+        this.pruneAndMerge()
+        return i
+      }
+      if (step.kind === 'JOURNEY') break
+    }
+    this.insertJourneyStepAfter(effectiveAfter, vehicleId, toTileId)
+    return effectiveAfter + 1
   }
 
   /** Remove vehicleId's journey intent from the JourneyStep at stepIndex. */
