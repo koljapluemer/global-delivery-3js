@@ -31,7 +31,7 @@ export type InputModeEvent =
       clientY?: number
     }
   | { type: 'CONFIRM_PIN_PLACEMENT'; vehicleId: number; fromTileId: number }
-  | { type: 'ENTER_PIN_PLACEMENT'; vehicleId: number; fromTileId: number }
+  | { type: 'ENTER_PIN_PLACEMENT'; vehicleId: number; fromTileId: number; insertAfterStepIndex?: number }
   | { type: 'ENTER_CRATE_DROP'; vehicleId: number; stepIndex: number; crateId: number }
   | { type: 'ENTER_CRATE_LOAD'; crateId: number; stepIndex: number; crateTileId: number }
   | { type: 'UPDATE_LOAD_TARGET'; payload: { vehicleId: number; insertAfterStepIndex: number } | null }
@@ -72,6 +72,7 @@ export const inputModeMachine = createMachine({
           actions: assign({
             vehicleId: ({ event }) => ('vehicleId' in event ? event.vehicleId : undefined),
             fromTileId: ({ event }) => ('fromTileId' in event ? event.fromTileId : undefined),
+            insertAfterStepIndex: ({ event }) => ('insertAfterStepIndex' in event ? event.insertAfterStepIndex : undefined),
           }),
         },
         POINTER_DOWN_PIN: {

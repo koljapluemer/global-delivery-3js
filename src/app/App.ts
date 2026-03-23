@@ -212,12 +212,11 @@ export class App {
           buildPinMenu(panel,
             { vehicleId, stepIndex, plan: intentManager.getPlan(), derived: this.derived },
             {
-              onAddPinAfter: async () => {
-                const tileId = this.derived.stepSnapshots[stepIndex]?.vehiclePositions.get(vehicleId)
-                if (tileId === undefined) return
-                undoHistory.snapshot(intentManager.getPlan())
-                intentManager.insertJourneyStepAfter(stepIndex, vehicleId, tileId)
-                close(); await this.rerender()
+              onAddPinAfter: () => {
+                const fromTileId = this.derived.stepSnapshots[stepIndex]?.vehiclePositions.get(vehicleId)
+                if (fromTileId === undefined) return
+                close()
+                inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId, insertAfterStepIndex: stepIndex })
               },
               onRemovePin: async () => {
                 undoHistory.snapshot(intentManager.getPlan())
@@ -420,12 +419,11 @@ export class App {
         buildPinMenu(panel,
           { vehicleId, stepIndex, plan: this.deps.intentManager.getPlan(), derived: this.derived },
           {
-            onAddPinAfter: async () => {
-              const tileId = this.derived.stepSnapshots[stepIndex]?.vehiclePositions.get(vehicleId)
-              if (tileId === undefined) return
-              this.deps.undoHistory.snapshot(this.deps.intentManager.getPlan())
-              this.deps.intentManager.insertJourneyStepAfter(stepIndex, vehicleId, tileId)
-              close(); await this.rerender()
+            onAddPinAfter: () => {
+              const fromTileId = this.derived.stepSnapshots[stepIndex]?.vehiclePositions.get(vehicleId)
+              if (fromTileId === undefined) return
+              close()
+              this.deps.inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId, insertAfterStepIndex: stepIndex })
             },
             onRemovePin: async () => {
               this.deps.undoHistory.snapshot(this.deps.intentManager.getPlan())

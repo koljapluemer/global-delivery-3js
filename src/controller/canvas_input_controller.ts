@@ -213,7 +213,11 @@ export class CanvasInputController {
     if (state === 'pinPlacement') {
       if (lastHoveredTile) {
         undoHistory.snapshot(plan)
-        intentManager.addPinAfterLastVehicleStep(ctx.vehicleId!, lastHoveredTile.tile_id)
+        if (ctx.insertAfterStepIndex !== undefined) {
+          intentManager.insertJourneyStepAfter(ctx.insertAfterStepIndex, ctx.vehicleId!, lastHoveredTile.tile_id)
+        } else {
+          intentManager.addPinAfterLastVehicleStep(ctx.vehicleId!, lastHoveredTile.tile_id)
+        }
         pinPlacementPreview?.hide()
         await rerender()
       }
