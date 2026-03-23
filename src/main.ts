@@ -11,7 +11,6 @@ import { inputModeMachine } from './controller/input_mode/input_mode_machine'
 import { GameItemRenderer } from './view/game/game_item_renderer'
 import { HudPanel } from './view/ui/hud_panel/hud_panel'
 import { PlanPanel } from './view/ui/plan_panel/plan_panel'
-import { InspectorPanel } from './view/ui/inspector_panel/inspector_panel'
 import { CancelButton } from './view/ui/overlay/cancel_button'
 import { PinContextMenu } from './view/ui/overlay/pin_context_menu'
 import { CrateLoadMenu } from './view/ui/overlay/crate_load_menu'
@@ -43,8 +42,6 @@ const hudPanel = new HudPanel()
 hudPanel.mount(document.body)
 const planPanel = new PlanPanel()
 planPanel.mount(document.body, tileCentersApi)
-const inspectorPanel = new InspectorPanel()
-inspectorPanel.mount(document.body)
 const cancelButton = new CancelButton()
 cancelButton.mount(document.body, () => inputModeActor.send({ type: 'CANCEL' }))
 const pinContextMenu = new PinContextMenu()
@@ -79,7 +76,6 @@ const app = new App({
   gameItemRenderer,
   hudPanel,
   planPanel,
-  inspectorPanel,
   cancelButton,
   pinContextMenu,
   crateLoadMenu,

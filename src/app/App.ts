@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { GlobeScene } from '../view/game/globe_scene'
 import { MainCamera } from '../view/camera/main_camera'
 import { GlobePointer } from '../controller/globe_pointer'
-import { derivePlanState } from '../controller/plan_deriver'
+import { derivePlanState, getVehicleLastTileId } from '../controller/plan_deriver'
 import { deriveRouteLegs } from '../controller/traveltime'
 import { GameItemRenderer } from '../view/game/game_item_renderer'
 import { LabelRenderer } from '../view/game/label_renderer'
@@ -10,7 +10,6 @@ import { PinPlacementPreview } from '../view/game/pin_placement_preview'
 import { CrateDropPreview } from '../view/game/crate_drop_preview'
 import { CrateLoadPreview } from '../view/game/crate_load_preview'
 import { PlanPanel } from '../view/ui/plan_panel/plan_panel'
-import { InspectorPanel } from '../view/ui/inspector_panel/inspector_panel'
 import { HudPanel } from '../view/ui/hud_panel/hud_panel'
 import { CancelButton } from '../view/ui/overlay/cancel_button'
 import { PinContextMenu } from '../view/ui/overlay/pin_context_menu'
@@ -47,7 +46,6 @@ export interface AppDeps {
   gameItemRenderer: GameItemRenderer
   hudPanel: HudPanel
   planPanel: PlanPanel
-  inspectorPanel: InspectorPanel
   cancelButton: CancelButton
   pinContextMenu: PinContextMenu
   crateLoadMenu: CrateLoadMenu
@@ -142,7 +140,6 @@ export class App {
       gameItemRenderer,
       hudPanel,
       planPanel,
-      inspectorPanel,
       cancelButton,
       pinContextMenu,
       crateLoadMenu,
@@ -202,23 +199,25 @@ export class App {
           boundingSphere.center,
           boundingSphere.radius,
         )
-        this.labelRenderer.onEntityClick = (target, worldPosition) => {
+        this.labelRenderer.onEntityClick = (_, worldPosition) => {
           this.countryHighlightRenderer?.hide()
-          inspectorPanel.show(
-            target,
-            intentManager.getPlan(),
-            this.derived,
-            tileCentersApi,
-          )
           this.deps.mainCamera.panTo(worldPosition)
         }
         this.labelRenderer.onLocateCountry = (countryName, nearHint) => {
           this.countryHighlightRenderer?.hide()
           const nearestTile = this.countryHighlightRenderer?.show(countryName, tileCentersApi, mainCamera.camera.position) ?? nearHint
-          inspectorPanel.show({ kind: 'COUNTRY', countryName }, intentManager.getPlan(), this.derived, tileCentersApi)
           mainCamera.panTo(nearestTile)
         }
-        inspectorPanel.onClose = () => { this.countryHighlightRenderer?.hide() }
+        this.labelRenderer.onAddPin = (vehicleId) => {
+          const fromTileId = getVehicleLastTileId(intentManager.getPlan(), vehicleId)
+          if (fromTileId === null) return
+          inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId })
+        }
+        this.labelRenderer.onRemoveJourneyIntent = async (stepIndex, vehicleId) => {
+          undoHistory.snapshot(intentManager.getPlan())
+          intentManager.removeJourneyIntent(stepIndex, vehicleId)
+          await this.rerender()
+        }
         const plan = intentManager.getPlan()
         const legs = deriveRouteLegs(this.derived)
         this.labelRenderer.syncCrateLabels(plan, tileCentersApi)
@@ -237,19 +236,11 @@ export class App {
           const t = tileCentersApi.getTileById(tileId)
           if (t) mainCamera.panTo(new THREE.Vector3(t.x, t.z, -t.y))
         }
-        planPanel.onFocusEntity = (target) => {
-          this.countryHighlightRenderer?.hide()
-          inspectorPanel.show(target, intentManager.getPlan(), this.derived, tileCentersApi)
-        }
-
         wirePanelCallbacks({
-          inspectorPanel,
           planPanel,
           hudPanel,
           intentManager,
           undoHistory,
-          inputModeActor,
-          tileCentersApi,
           rerender: () => this.rerender(),
           getDerived: () => this.derived,
           getPlan: () => intentManager.getPlan(),
@@ -281,7 +272,6 @@ export class App {
           getLastHoveredTile: () => this.lastHoveredTile,
           getLabelRenderer: () => this.labelRenderer,
           tileCentersApi,
-          inspectorPanel,
           pinContextMenu,
           crateLoadMenu,
           pinPlacementPreview: this.pinPlacementPreview,
@@ -303,10 +293,9 @@ export class App {
   }
 
   hidePlanUI(): void {
-    const { hudPanel, planPanel, inspectorPanel } = this.deps
+    const { hudPanel, planPanel } = this.deps
     hudPanel.hide()
     planPanel.hide()
-    inspectorPanel.hide()
   }
 
   showPlanUI(): void {
@@ -338,11 +327,10 @@ export class App {
     onHudUpdate: () => void,
     onComplete: (stats: LevelStats) => void | Promise<void>,
   ): Promise<void> {
-    const { globeScene, planPanel, inspectorPanel, tileCentersApi, gameState } = this.deps
+    const { globeScene, planPanel, tileCentersApi, gameState } = this.deps
 
     // Hide interactive panels, keep HUD
     planPanel.hide()
-    inspectorPanel.hide()
 
     // Remove PLAN-mode 3D objects so they don't sit under the animated meshes
     this.deps.gameItemRenderer.dispose()
@@ -390,16 +378,24 @@ export class App {
         this.boundingSphere.center,
         this.boundingSphere.radius,
       )
-      this.labelRenderer.onEntityClick = (target, worldPosition) => {
+      this.labelRenderer.onEntityClick = (_, worldPosition) => {
         this.countryHighlightRenderer?.hide()
-        this.deps.inspectorPanel.show(target, this.deps.intentManager.getPlan(), this.derived, this.deps.tileCentersApi)
         this.deps.mainCamera.panTo(worldPosition)
       }
       this.labelRenderer.onLocateCountry = (countryName, nearHint) => {
         this.countryHighlightRenderer?.hide()
         const nearestTile = this.countryHighlightRenderer?.show(countryName, this.deps.tileCentersApi, this.deps.mainCamera.camera.position) ?? nearHint
-        this.deps.inspectorPanel.show({ kind: 'COUNTRY', countryName }, this.deps.intentManager.getPlan(), this.derived, this.deps.tileCentersApi)
         this.deps.mainCamera.panTo(nearestTile)
+      }
+      this.labelRenderer.onAddPin = (vehicleId) => {
+        const fromTileId = getVehicleLastTileId(this.deps.intentManager.getPlan(), vehicleId)
+        if (fromTileId === null) return
+        this.deps.inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId })
+      }
+      this.labelRenderer.onRemoveJourneyIntent = async (stepIndex, vehicleId) => {
+        this.deps.undoHistory.snapshot(this.deps.intentManager.getPlan())
+        this.deps.intentManager.removeJourneyIntent(stepIndex, vehicleId)
+        await this.rerender()
       }
     }
 

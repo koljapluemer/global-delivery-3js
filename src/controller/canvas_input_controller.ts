@@ -8,7 +8,6 @@ import type { DerivedPlanState } from '../model/types/DerivedPlanState'
 import type { TileCenter } from './layer_0/tile_centers_api'
 import type { PlanIntentManager } from './plan_intent_manager'
 import type { UndoRedoHistory } from './undo_redo'
-import type { InspectorPanel } from '../view/ui/inspector_panel/inspector_panel'
 import type { PinContextMenu } from '../view/ui/overlay/pin_context_menu'
 import type { CrateLoadMenu } from '../view/ui/overlay/crate_load_menu'
 import type { PinPlacementPreview } from '../view/game/pin_placement_preview'
@@ -34,7 +33,6 @@ export interface CanvasInputControllerDeps {
   getLastHoveredTile: () => TileCenter | null
   getLabelRenderer: () => LabelRenderer | null
   tileCentersApi: TileCentersApi
-  inspectorPanel: InspectorPanel
   pinContextMenu: PinContextMenu
   crateLoadMenu: CrateLoadMenu
   pinPlacementPreview: PinPlacementPreview | null
@@ -136,7 +134,6 @@ export class CanvasInputController {
       getLastHoveredTile,
       getLabelRenderer,
       tileCentersApi,
-      inspectorPanel,
       pinContextMenu,
       crateLoadMenu,
       pinPlacementPreview,
@@ -178,7 +175,6 @@ export class CanvasInputController {
               intentManager.removeCargoIntent(cargoStepIndex)
               pinContextMenu.hide()
               await rerender()
-              inspectorPanel.refresh(plan, derived, tileCentersApi)
             },
             onClose: () => labelRenderer?.setPinLabelOffset(vehicleId, stepIndex, 0),
           },
@@ -191,7 +187,6 @@ export class CanvasInputController {
         }
         pinPlacementPreview?.hide()
         await rerender()
-        inspectorPanel.show({ kind: 'VEHICLE', id: vehicleId }, plan, derived, tileCentersApi)
         inputModeActor.send({ type: 'CONFIRM_PIN_DRAG' })
       }
       this.pointerDownHit = null
@@ -207,7 +202,6 @@ export class CanvasInputController {
       }
       pinPlacementPreview?.hide()
       await rerender()
-      inspectorPanel.show({ kind: 'VEHICLE', id: vehicleId }, plan, derived, tileCentersApi)
       inputModeActor.send({ type: 'CONFIRM_ROUTE_SPLIT' })
       this.pointerDownHit = null
       return
@@ -226,7 +220,6 @@ export class CanvasInputController {
         )
         crateDropPreview?.hide()
         await rerender()
-        inspectorPanel.show({ kind: 'VEHICLE', id: ctx.vehicleId! }, plan, derived, tileCentersApi)
       }
       inputModeActor.send({ type: 'CONFIRM_CRATE_DROP' })
       this.pointerDownHit = null
@@ -244,7 +237,6 @@ export class CanvasInputController {
         })
         crateLoadPreview?.hide()
         await rerender()
-        inspectorPanel.show({ kind: 'VEHICLE', id: vehicleId }, plan, derived, tileCentersApi)
       }
       inputModeActor.send({ type: 'CONFIRM_CRATE_LOAD' })
       this.pointerDownHit = null
@@ -257,7 +249,6 @@ export class CanvasInputController {
         intentManager.addPinAfterLastVehicleStep(ctx.vehicleId!, lastHoveredTile.tile_id)
         pinPlacementPreview?.hide()
         await rerender()
-        inspectorPanel.show({ kind: 'VEHICLE', id: ctx.vehicleId! }, plan, derived, tileCentersApi)
       }
       inputModeActor.send({
         type: 'CONFIRM_PIN_PLACEMENT',
@@ -277,7 +268,7 @@ export class CanvasInputController {
         tileId?: number
       }
       if (meta.entityType === 'VEHICLE') {
-        inspectorPanel.show({ kind: 'VEHICLE', id: meta.entityId! }, plan, derived, tileCentersApi)
+        // vehicle click handled by label renderer onEntityClick (camera pan)
       } else if (meta.entityType === 'CRATE' || meta.entityType === 'GHOST_CRATE') {
         const crateId = meta.entityType === 'CRATE' ? meta.entityId! : meta.crateId!
         const stepIndex = meta.stepIndex ?? 0
@@ -293,12 +284,9 @@ export class CanvasInputController {
         undoHistory.snapshot(plan)
         intentManager.removeCargoIntent(meta.stepIndex!)
         await rerender()
-      } else {
-        inspectorPanel.hide()
       }
       this.pointerDownHit = null
     } else if (state === 'normal') {
-      inspectorPanel.hide()
       this.pointerDownHit = null
     }
   }
