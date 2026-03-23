@@ -35,6 +35,8 @@ import { AnimateRenderer } from '../view/game/animate_renderer'
 import { PlanAnimator } from '../controller/animate_mode/plan_animator'
 import { CrateArrivalAnimator } from '../controller/animate_mode/crate_arrival_animator'
 import { CountryHighlightRenderer } from '../view/game/country_highlight_renderer'
+import { FairTileHighlightRenderer } from '../view/game/fair_tile_highlight_renderer'
+import { computeFairTileSet, type FairTileSet } from '../controller/fair_tiles'
 
 export interface AppDeps {
   renderer: THREE.WebGLRenderer
@@ -68,6 +70,8 @@ export class App {
   private canvasInputController: CanvasInputController | null = null
   private frameCallback: ((delta: number) => void) | null = null
   private countryHighlightRenderer: CountryHighlightRenderer | null = null
+  private fairTileHighlightRenderer: FairTileHighlightRenderer | null = null
+  private fairTileSet: FairTileSet | null = null
   onConfirmPlan: (() => void) | null = null
 
   constructor(deps: AppDeps) {
@@ -155,6 +159,8 @@ export class App {
     this.crateDropPreview = new CrateDropPreview(globeScene.scene)
     this.crateLoadPreview = new CrateLoadPreview(globeScene.scene)
     this.countryHighlightRenderer = new CountryHighlightRenderer(globeScene.scene, boundingSphere.center)
+    this.fairTileHighlightRenderer = new FairTileHighlightRenderer(globeScene.scene, boundingSphere.center)
+    this.fairTileSet = computeFairTileSet(intentManager.getPlan(), navApi, tileCentersApi)
 
     const pointer = new GlobePointer(
       renderer.domElement,
@@ -276,6 +282,15 @@ export class App {
           getPlan: () => intentManager.getPlan(),
           onConfirmPlan: () => this.onConfirmPlan?.(),
         })
+
+        hudPanel.onToggleFairTiles = () => {
+          if (hudPanel.showFairTiles && this.fairTileSet) {
+            this.fairTileHighlightRenderer?.show(this.fairTileSet.tileIds, tileCentersApi)
+          } else {
+            this.fairTileHighlightRenderer?.hide()
+          }
+          hudPanel.update(gameState, this.derived.totalTraveltime, undoHistory.canUndo(), undoHistory.canRedo())
+        }
 
         subscribeInputModeUI({
           inputModeActor,
@@ -485,6 +500,11 @@ export class App {
       steps: [],
     })
     undoHistory.clear()
+
+    const { navApi, tileCentersApi, hudPanel } = this.deps
+    this.fairTileSet = computeFairTileSet(intentManager.getPlan(), navApi, tileCentersApi)
+    this.fairTileHighlightRenderer?.hide()
+    hudPanel.showFairTiles = false
   }
 
   resize(): void {

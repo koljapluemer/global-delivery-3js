@@ -4,17 +4,10 @@ import type { NavApi } from '../controller/navigation'
 import type { Plan } from './types/Plan'
 import type { Crate } from './types/Crate'
 import type { Vehicle } from './types/Vehicle'
+import { computeFairTileSet } from '../controller/fair_tiles'
 
 function pickRandom<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
-}
-
-function uniqueCountryNames(tileApi: TileCentersApi): string[] {
-  const seen = new Set<string>()
-  for (const tile of tileApi.getAll()) {
-    if (tile.country_name) seen.add(tile.country_name)
-  }
-  return Array.from(seen)
 }
 
 export function createRandomCrate(countryNames: string[]): Crate {
@@ -27,7 +20,6 @@ export function createRandomCrate(countryNames: string[]): Crate {
 export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): Plan {
   const landNodeIds = navApi.getLargestComponentNodeIds('LAND')
   const waterNodeIds = navApi.getLargestComponentNodeIds('WATER')
-  const countryNames = uniqueCountryNames(tileCentersApi)
 
   const carType = AvailableVehicleTypes['basic_car']
   const boatType = AvailableVehicleTypes['small_boat']
@@ -35,16 +27,6 @@ export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): P
   const carTileId = pickRandom(landNodeIds)
   const carTileId2 = pickRandom(landNodeIds)
   const boatTileId = pickRandom(waterNodeIds)
-
-  const usedTiles = new Set<number>([carTileId, boatTileId])
-  const crateTileIds: number[] = []
-  while (crateTileIds.length < 6) {
-    const tileId = pickRandom(landNodeIds)
-    if (!usedTiles.has(tileId)) {
-      crateTileIds.push(tileId)
-      usedTiles.add(tileId)
-    }
-  }
 
   const vehicles: Record<number, Vehicle> = {
     0: {
@@ -70,9 +52,29 @@ export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): P
     },
   }
 
+  const tempPlan: Plan = {
+    vehicles,
+    crates: {},
+    initialState: { vehiclePositions: { 0: carTileId, 1: boatTileId, 2: carTileId2 }, cratePositions: {} },
+    steps: [],
+  }
+  const fairTileSet = computeFairTileSet(tempPlan, navApi, tileCentersApi)
+  const fairLandTiles = [...fairTileSet.tileIds]
+  const fairCountries = [...fairTileSet.countryNames]
+
+  const usedTiles = new Set<number>([carTileId, carTileId2, boatTileId])
+  const crateTileIds: number[] = []
+  while (crateTileIds.length < 6) {
+    const tileId = pickRandom(fairLandTiles)
+    if (!usedTiles.has(tileId)) {
+      crateTileIds.push(tileId)
+      usedTiles.add(tileId)
+    }
+  }
+
   const crates: Record<number, Crate> = {}
   for (let i = 0; i < 6; i++) {
-    crates[i] = createRandomCrate(countryNames)
+    crates[i] = createRandomCrate(fairCountries)
   }
 
   return {

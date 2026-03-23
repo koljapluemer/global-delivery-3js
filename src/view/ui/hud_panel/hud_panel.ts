@@ -1,4 +1,4 @@
-import { createElement, DollarSign, Star, Clock, Undo2, Redo2, Download, Heart } from 'lucide'
+import { createElement, DollarSign, Star, Clock, Undo2, Redo2, Download, Heart, Map } from 'lucide'
 import type { GameState } from '../../../model/types/GameState'
 import { INITIAL_LIVES } from '../../../controller/game_flow/game_flow_machine'
 
@@ -7,6 +7,9 @@ export class HudPanel {
   onRedo: (() => void) | null = null
   /** Called when the user requests to download derived snapshots as JSON. */
   onDownloadSnapshots: (() => void) | null = null
+  /** Called when the fair tiles debug overlay is toggled. */
+  onToggleFairTiles: (() => void) | null = null
+  showFairTiles: boolean = false
 
   private el: HTMLElement | null = null
 
@@ -91,9 +94,28 @@ export class HudPanel {
     })
     downloadSnapshotsBtn.addEventListener('click', () => { this.onDownloadSnapshots?.() })
 
+    const fairTilesBtn = document.createElement('button')
+    fairTilesBtn.title = 'Toggle fair tiles debug overlay'
+    fairTilesBtn.appendChild(createElement(Map, { width: 16, height: 16 }))
+    Object.assign(fairTilesBtn.style, {
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      color: this.showFairTiles ? '#44ff88' : 'rgba(255,255,255,0.4)',
+      padding: '4px',
+      lineHeight: '0',
+      display: 'flex',
+      alignItems: 'center',
+    })
+    fairTilesBtn.addEventListener('click', () => {
+      this.showFairTiles = !this.showFairTiles
+      this.onToggleFairTiles?.()
+    })
+
     center.appendChild(undoBtn)
     center.appendChild(redoBtn)
     center.appendChild(downloadSnapshotsBtn)
+    center.appendChild(fairTilesBtn)
 
     // Right side: lives | money | stamps n/goal | travel budget
     const right = document.createElement('div')

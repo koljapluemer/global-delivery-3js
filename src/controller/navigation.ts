@@ -50,6 +50,12 @@ export class NavApi {
     const largest = components.reduce((a, b) => (a.size >= b.size ? a : b))
     return largest.node_ids
   }
+
+  /** Returns the node IDs of the component containing tileId in the given navmesh, or null if not found. */
+  getComponentNodeIds(tileId: number, navMesh: NavMesh): number[] | null {
+    const components = this.componentsByMesh.get(navMesh) ?? []
+    return components.find((c) => c.node_ids.includes(tileId))?.node_ids ?? null
+  }
 }
 
 function buildAdjMap(data: NavData): Map<number, number[]> {
