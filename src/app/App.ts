@@ -361,25 +361,6 @@ export class App {
     const animRenderer = new AnimateRenderer(globeScene.scene)
     const animator = new PlanAnimator()
 
-    // Pick a random vehicle that actually moves for camera tracking
-    const movingVehicleIds = this.derived.steps
-      .filter((s) => s.kind === 'JOURNEY')
-      .flatMap((s) => (s as import('../model/types/DerivedPlanState').DerivedJourneyStep).journeys)
-      .filter((j) => j.pathTileIds.length >= 2)
-      .map((j) => j.vehicleId)
-    const uniqueMovingIds = [...new Set(movingVehicleIds)]
-    const trackedVehicleId = uniqueMovingIds.length > 0
-      ? uniqueMovingIds[Math.floor(Math.random() * uniqueMovingIds.length)]
-      : undefined
-
-    if (trackedVehicleId !== undefined) {
-      const startTileId = this.derived.initialSnapshot.vehiclePositions.get(trackedVehicleId)
-      if (startTileId !== undefined) {
-        const t = tileCentersApi.getTileById(startTileId)
-        if (t) this.deps.mainCamera.panTo(new THREE.Vector3(t.x, t.z, -t.y))
-      }
-    }
-
     this.frameCallback = (delta) => animator.tick(delta)
 
     const stats = await animator.run({
@@ -390,7 +371,6 @@ export class App {
       animRenderer,
       gameState,
       onHudUpdate,
-      trackedVehicleId,
       onTrackTile: (tileId) => {
         const t = tileCentersApi.getTileById(tileId)
         if (t) this.deps.mainCamera.panTo(new THREE.Vector3(t.x, t.z, -t.y))

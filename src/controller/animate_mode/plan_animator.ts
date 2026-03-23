@@ -11,6 +11,8 @@ import { emptyLevelStats } from '../../model/types/LevelStats'
 const SECONDS_PER_TILE = 0.12
 /** Duration for cargo load/unload/deliver animation in seconds. */
 const CARGO_ANIM_SECONDS = 0.3
+/** Time to wait after panning to the tracked vehicle before starting a journey step. */
+const PRE_STEP_PAN_WAIT = 0.4
 
 export interface PlanAnimatorRunOptions {
   plan: Plan
@@ -20,7 +22,6 @@ export interface PlanAnimatorRunOptions {
   animRenderer: AnimateRenderer
   gameState: GameState
   onHudUpdate: () => void
-  trackedVehicleId?: number
   onTrackTile?: (tileId: number) => void
 }
 
@@ -106,7 +107,7 @@ export class PlanAnimator {
   }
 
   async run(opts: PlanAnimatorRunOptions): Promise<LevelStats> {
-    const { plan, derived, tileApi, globeCenter, animRenderer, gameState, onHudUpdate, trackedVehicleId, onTrackTile } = opts
+    const { plan, derived, tileApi, globeCenter, animRenderer, gameState, onHudUpdate, onTrackTile } = opts
 
     await animRenderer.setup(plan, derived.initialSnapshot, tileApi, globeCenter)
 
@@ -118,13 +119,20 @@ export class PlanAnimator {
     for (const step of derived.steps) {
       if (step.kind === 'JOURNEY') {
         const journeyStep = step as DerivedJourneyStep
+        // Pick a vehicle moving this step and pan to it before animating
+        const movingJourney = journeyStep.journeys.find((j) => j.pathTileIds.length >= 2)
+        if (movingJourney && onTrackTile) {
+          onTrackTile(movingJourney.pathTileIds[0])
+          await this.waitSeconds(PRE_STEP_PAN_WAIT)
+        }
         // Animate all journeys in this step in parallel
+        const stepTrackedId = movingJourney?.vehicleId
         await Promise.all(
           journeyStep.journeys.map(async (j) => {
             if (j.pathTileIds.length < 2) return
             const tilesTraversed = await this.animateVehicleAlongPath(
               j.vehicleId, j.pathTileIds, plan, tileApi, globeCenter, animRenderer,
-              { trackedVehicleId, onTrackTile },
+              { trackedVehicleId: stepTrackedId, onTrackTile },
             )
             stats.pathTilesTraversed += tilesTraversed
           }),
