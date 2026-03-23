@@ -4,7 +4,6 @@ import type { CancelButton } from '../../view/ui/overlay/cancel_button'
 import type { PinPlacementPreview } from '../../view/game/pin_placement_preview'
 import type { CrateDropPreview } from '../../view/game/crate_drop_preview'
 import type { CrateLoadPreview } from '../../view/game/crate_load_preview'
-import type { PinContextMenu } from '../../view/ui/overlay/pin_context_menu'
 import type { CrateLoadMenu } from '../../view/ui/overlay/crate_load_menu'
 import type { GameItemRenderer } from '../../view/game/game_item_renderer'
 
@@ -15,7 +14,7 @@ export interface InputModeUIDeps {
   pinPlacementPreview: PinPlacementPreview | null
   crateDropPreview: CrateDropPreview | null
   crateLoadPreview: CrateLoadPreview | null
-  pinContextMenu: PinContextMenu
+  closeActiveMenu: () => void
   crateLoadMenu: CrateLoadMenu
   gameItemRenderer: GameItemRenderer
 }
@@ -28,7 +27,7 @@ export function subscribeInputModeUI(deps: InputModeUIDeps): void {
     pinPlacementPreview,
     crateDropPreview,
     crateLoadPreview,
-    pinContextMenu,
+    closeActiveMenu,
     crateLoadMenu,
     gameItemRenderer,
   } = deps
@@ -52,7 +51,7 @@ export function subscribeInputModeUI(deps: InputModeUIDeps): void {
       pinPlacementPreview?.hide()
       crateDropPreview?.hide()
       crateLoadPreview?.hide()
-      pinContextMenu.hide()
+      closeActiveMenu()
       crateLoadMenu.hide()
     }
     if (!isNormal) gameItemRenderer.setHovered(null)

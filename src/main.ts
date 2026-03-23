@@ -12,7 +12,6 @@ import { GameItemRenderer } from './view/game/game_item_renderer'
 import { HudPanel } from './view/ui/hud_panel/hud_panel'
 import { PlanPanel } from './view/ui/plan_panel/plan_panel'
 import { CancelButton } from './view/ui/overlay/cancel_button'
-import { PinContextMenu } from './view/ui/overlay/pin_context_menu'
 import { CrateLoadMenu } from './view/ui/overlay/crate_load_menu'
 import { App } from './app/App'
 import { CountryHoverBar } from './view/ui/country_hover_bar'
@@ -44,8 +43,6 @@ const planPanel = new PlanPanel()
 planPanel.mount(document.body, tileCentersApi)
 const cancelButton = new CancelButton()
 cancelButton.mount(document.body, () => inputModeActor.send({ type: 'CANCEL' }))
-const pinContextMenu = new PinContextMenu()
-pinContextMenu.mount(document.body)
 const crateLoadMenu = new CrateLoadMenu()
 crateLoadMenu.mount(document.body)
 const countryHoverBar = new CountryHoverBar()
@@ -77,7 +74,6 @@ const app = new App({
   hudPanel,
   planPanel,
   cancelButton,
-  pinContextMenu,
   crateLoadMenu,
   gameState,
   countryHoverBar,

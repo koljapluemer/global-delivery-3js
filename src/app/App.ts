@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { buildPinMenu } from '../view/ui/overlay/pin_label_menu'
+import { buildVehicleMenu } from '../view/ui/overlay/vehicle_label_menu'
 import { GlobeScene } from '../view/game/globe_scene'
 import { MainCamera } from '../view/camera/main_camera'
 import { GlobePointer } from '../controller/globe_pointer'
@@ -12,19 +14,19 @@ import { CrateLoadPreview } from '../view/game/crate_load_preview'
 import { PlanPanel } from '../view/ui/plan_panel/plan_panel'
 import { HudPanel } from '../view/ui/hud_panel/hud_panel'
 import { CancelButton } from '../view/ui/overlay/cancel_button'
-import { PinContextMenu } from '../view/ui/overlay/pin_context_menu'
 import { CrateLoadMenu } from '../view/ui/overlay/crate_load_menu'
 import { SceneInteractionManager } from '../controller/scene_interaction_manager'
 import { createTileHoverHandler } from '../controller/tile_hover_controller'
 import { wirePanelCallbacks } from './panel_wiring'
 import { subscribeInputModeUI } from '../controller/input_mode/input_mode_ui'
 import { CanvasInputController } from '../controller/canvas_input_controller'
+import type { DerivedPlanState } from '../model/types/DerivedPlanState'
+import type { DerivedCargoStep } from '../model/types/DerivedPlanState'
 import type { PlanIntentManager } from '../controller/plan_intent_manager'
 import type { UndoRedoHistory } from '../controller/undo_redo'
 import type { NavApi } from '../controller/navigation'
 import type { TileCentersApi } from '../controller/layer_0/tile_centers_api'
 import type { CountryHoverBar } from '../view/ui/country_hover_bar'
-import type { DerivedPlanState, DerivedCargoStep } from '../model/types/DerivedPlanState'
 import type { GameState } from '../model/types/GameState'
 import type { TileCenter } from '../controller/layer_0/tile_centers_api'
 import type { Actor } from 'xstate'
@@ -47,7 +49,6 @@ export interface AppDeps {
   hudPanel: HudPanel
   planPanel: PlanPanel
   cancelButton: CancelButton
-  pinContextMenu: PinContextMenu
   crateLoadMenu: CrateLoadMenu
   gameState: GameState
   countryHoverBar: CountryHoverBar
@@ -141,7 +142,6 @@ export class App {
       hudPanel,
       planPanel,
       cancelButton,
-      pinContextMenu,
       crateLoadMenu,
       undoHistory,
       gameState,
@@ -201,22 +201,53 @@ export class App {
         )
         this.labelRenderer.onEntityClick = (_, worldPosition) => {
           this.countryHighlightRenderer?.hide()
-          this.deps.mainCamera.panTo(worldPosition)
+          mainCamera.panTo(worldPosition)
         }
         this.labelRenderer.onLocateCountry = (countryName, nearHint) => {
           this.countryHighlightRenderer?.hide()
           const nearestTile = this.countryHighlightRenderer?.show(countryName, tileCentersApi, mainCamera.camera.position) ?? nearHint
           mainCamera.panTo(nearestTile)
         }
-        this.labelRenderer.onAddPin = (vehicleId) => {
-          const fromTileId = getVehicleLastTileId(intentManager.getPlan(), vehicleId)
-          if (fromTileId === null) return
-          inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId })
+        this.labelRenderer.onPinMenuOpen = (vehicleId, stepIndex, panel, close) => {
+          buildPinMenu(panel,
+            { vehicleId, stepIndex, plan: intentManager.getPlan(), derived: this.derived },
+            {
+              onAddPinAfter: async () => {
+                const tileId = this.derived.stepSnapshots[stepIndex]?.vehiclePositions.get(vehicleId)
+                if (tileId === undefined) return
+                undoHistory.snapshot(intentManager.getPlan())
+                intentManager.insertJourneyStepAfter(stepIndex, vehicleId, tileId)
+                close(); await this.rerender()
+              },
+              onRemovePin: async () => {
+                undoHistory.snapshot(intentManager.getPlan())
+                intentManager.removeJourneyIntent(stepIndex, vehicleId)
+                close(); await this.rerender()
+              },
+              onUnload: (crateId) => {
+                close()
+                inputModeActor.send({ type: 'ENTER_CRATE_DROP', vehicleId, stepIndex, crateId })
+              },
+              onRemoveUnload: async (cargoStepIndex) => {
+                undoHistory.snapshot(intentManager.getPlan())
+                intentManager.removeCargoIntent(cargoStepIndex)
+                close(); await this.rerender()
+              },
+            },
+          )
         }
-        this.labelRenderer.onRemoveJourneyIntent = async (stepIndex, vehicleId) => {
-          undoHistory.snapshot(intentManager.getPlan())
-          intentManager.removeJourneyIntent(stepIndex, vehicleId)
-          await this.rerender()
+        this.labelRenderer.onVehicleMenuOpen = (vehicleId, panel, close) => {
+          buildVehicleMenu(panel,
+            { vehicleId, plan: intentManager.getPlan() },
+            {
+              onAddPin: () => {
+                const fromTileId = getVehicleLastTileId(intentManager.getPlan(), vehicleId)
+                if (fromTileId === null) return
+                close()
+                inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId })
+              },
+            },
+          )
         }
         const plan = intentManager.getPlan()
         const legs = deriveRouteLegs(this.derived)
@@ -254,7 +285,7 @@ export class App {
           pinPlacementPreview: this.pinPlacementPreview,
           crateDropPreview: this.crateDropPreview,
           crateLoadPreview: this.crateLoadPreview,
-          pinContextMenu,
+          closeActiveMenu: () => this.labelRenderer?.closeActiveMenu(),
           crateLoadMenu,
           gameItemRenderer,
         })
@@ -271,8 +302,6 @@ export class App {
           getPlan: () => intentManager.getPlan(),
           getLastHoveredTile: () => this.lastHoveredTile,
           getLabelRenderer: () => this.labelRenderer,
-          tileCentersApi,
-          pinContextMenu,
           crateLoadMenu,
           pinPlacementPreview: this.pinPlacementPreview,
           crateDropPreview: this.crateDropPreview,
@@ -387,15 +416,46 @@ export class App {
         const nearestTile = this.countryHighlightRenderer?.show(countryName, this.deps.tileCentersApi, this.deps.mainCamera.camera.position) ?? nearHint
         this.deps.mainCamera.panTo(nearestTile)
       }
-      this.labelRenderer.onAddPin = (vehicleId) => {
-        const fromTileId = getVehicleLastTileId(this.deps.intentManager.getPlan(), vehicleId)
-        if (fromTileId === null) return
-        this.deps.inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId })
+      this.labelRenderer.onPinMenuOpen = (vehicleId, stepIndex, panel, close) => {
+        buildPinMenu(panel,
+          { vehicleId, stepIndex, plan: this.deps.intentManager.getPlan(), derived: this.derived },
+          {
+            onAddPinAfter: async () => {
+              const tileId = this.derived.stepSnapshots[stepIndex]?.vehiclePositions.get(vehicleId)
+              if (tileId === undefined) return
+              this.deps.undoHistory.snapshot(this.deps.intentManager.getPlan())
+              this.deps.intentManager.insertJourneyStepAfter(stepIndex, vehicleId, tileId)
+              close(); await this.rerender()
+            },
+            onRemovePin: async () => {
+              this.deps.undoHistory.snapshot(this.deps.intentManager.getPlan())
+              this.deps.intentManager.removeJourneyIntent(stepIndex, vehicleId)
+              close(); await this.rerender()
+            },
+            onUnload: (crateId) => {
+              close()
+              this.deps.inputModeActor.send({ type: 'ENTER_CRATE_DROP', vehicleId, stepIndex, crateId })
+            },
+            onRemoveUnload: async (cargoStepIndex) => {
+              this.deps.undoHistory.snapshot(this.deps.intentManager.getPlan())
+              this.deps.intentManager.removeCargoIntent(cargoStepIndex)
+              close(); await this.rerender()
+            },
+          },
+        )
       }
-      this.labelRenderer.onRemoveJourneyIntent = async (stepIndex, vehicleId) => {
-        this.deps.undoHistory.snapshot(this.deps.intentManager.getPlan())
-        this.deps.intentManager.removeJourneyIntent(stepIndex, vehicleId)
-        await this.rerender()
+      this.labelRenderer.onVehicleMenuOpen = (vehicleId, panel, close) => {
+        buildVehicleMenu(panel,
+          { vehicleId, plan: this.deps.intentManager.getPlan() },
+          {
+            onAddPin: () => {
+              const fromTileId = getVehicleLastTileId(this.deps.intentManager.getPlan(), vehicleId)
+              if (fromTileId === null) return
+              close()
+              this.deps.inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId })
+            },
+          },
+        )
       }
     }
 
@@ -434,4 +494,5 @@ export class App {
     mainCamera.setAspect(window.innerWidth / window.innerHeight)
     renderer.setSize(window.innerWidth, window.innerHeight)
   }
+
 }

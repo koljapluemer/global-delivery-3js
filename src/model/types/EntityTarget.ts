@@ -2,3 +2,4 @@ export type EntityTarget =
   | { readonly kind: 'VEHICLE'; readonly id: number }
   | { readonly kind: 'CRATE'; readonly id: number }
   | { readonly kind: 'COUNTRY'; readonly countryName: string }
+  | { readonly kind: 'PIN'; readonly vehicleId: number; readonly stepIndex: number }

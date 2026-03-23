@@ -8,14 +8,12 @@ import type { DerivedPlanState } from '../model/types/DerivedPlanState'
 import type { TileCenter } from './layer_0/tile_centers_api'
 import type { PlanIntentManager } from './plan_intent_manager'
 import type { UndoRedoHistory } from './undo_redo'
-import type { PinContextMenu } from '../view/ui/overlay/pin_context_menu'
 import type { CrateLoadMenu } from '../view/ui/overlay/crate_load_menu'
 import type { PinPlacementPreview } from '../view/game/pin_placement_preview'
 import type { CrateDropPreview } from '../view/game/crate_drop_preview'
 import type { CrateLoadPreview } from '../view/game/crate_load_preview'
 import type { LabelRenderer } from '../view/game/label_renderer'
 import type { GameItemRenderer } from '../view/game/game_item_renderer'
-import type { TileCentersApi } from './layer_0/tile_centers_api'
 import type { Actor } from 'xstate'
 
 const DRAG_THRESHOLD_PX = 5
@@ -32,8 +30,6 @@ export interface CanvasInputControllerDeps {
   getPlan: () => Plan
   getLastHoveredTile: () => TileCenter | null
   getLabelRenderer: () => LabelRenderer | null
-  tileCentersApi: TileCentersApi
-  pinContextMenu: PinContextMenu
   crateLoadMenu: CrateLoadMenu
   pinPlacementPreview: PinPlacementPreview | null
   crateDropPreview: CrateDropPreview | null
@@ -129,12 +125,9 @@ export class CanvasInputController {
       inputModeActor,
       intentManager,
       undoHistory,
-      getDerived,
       getPlan,
       getLastHoveredTile,
       getLabelRenderer,
-      tileCentersApi,
-      pinContextMenu,
       crateLoadMenu,
       pinPlacementPreview,
       crateDropPreview,
@@ -144,10 +137,8 @@ export class CanvasInputController {
     const snapshot = inputModeActor.getSnapshot()
     const ctx = snapshot.context
     const state = inputStateValue(snapshot)
-    const derived = getDerived()
     const plan = getPlan()
     const lastHoveredTile = getLastHoveredTile()
-    const labelRenderer = getLabelRenderer()
 
     if (state === 'pinDrag') {
       const vehicleId = ctx.vehicleId!
@@ -155,31 +146,7 @@ export class CanvasInputController {
       if (!isDrag) {
         pinPlacementPreview?.hide()
         inputModeActor.send({ type: 'POINTER_UP', isDrag: false })
-        pinContextMenu.show(
-          vehicleId,
-          stepIndex,
-          plan,
-          derived,
-          tileCentersApi,
-          e.clientX,
-          e.clientY,
-          {
-            onUnload: (crateId) => {
-              labelRenderer?.setPinLabelOffset(vehicleId, stepIndex, 0)
-              pinContextMenu.hide()
-              inputModeActor.send({ type: 'ENTER_CRATE_DROP', vehicleId, stepIndex, crateId })
-            },
-            onRemoveUnload: async (cargoStepIndex) => {
-              labelRenderer?.setPinLabelOffset(vehicleId, stepIndex, 0)
-              undoHistory.snapshot(plan)
-              intentManager.removeCargoIntent(cargoStepIndex)
-              pinContextMenu.hide()
-              await rerender()
-            },
-            onClose: () => labelRenderer?.setPinLabelOffset(vehicleId, stepIndex, 0),
-          },
-        )
-        labelRenderer?.setPinLabelOffset(vehicleId, stepIndex, 80)
+        getLabelRenderer()?.openPinMenu(vehicleId, stepIndex)
       } else {
         if (lastHoveredTile) {
           undoHistory.snapshot(plan)
@@ -268,7 +235,7 @@ export class CanvasInputController {
         tileId?: number
       }
       if (meta.entityType === 'VEHICLE') {
-        // vehicle click handled by label renderer onEntityClick (camera pan)
+        getLabelRenderer()?.openVehicleMenu(meta.entityId as number)
       } else if (meta.entityType === 'CRATE' || meta.entityType === 'GHOST_CRATE') {
         const crateId = meta.entityType === 'CRATE' ? meta.entityId! : meta.crateId!
         const stepIndex = meta.stepIndex ?? 0

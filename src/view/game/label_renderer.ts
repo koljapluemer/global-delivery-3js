@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createElement, MapPin, Trash2 } from 'lucide'
+import { createElement, MapPin } from 'lucide'
 import speechBubbleUrl from '../../assets/ui/speechbubble.png?url'
 import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
 import vehicleBubbleSvgRaw from '../../assets/ui/vehicle_bubble.svg?raw'
@@ -34,6 +34,7 @@ interface VehicleLabelData {
 interface LabelEntry {
   el: HTMLDivElement
   textEl: HTMLSpanElement
+  menuPanel?: HTMLDivElement
   worldPos: THREE.Vector3
   smoothRot: number
   id?: string
@@ -55,14 +56,14 @@ export class LabelRenderer {
   private readonly globeRadius: number
   onEntityClick: ((target: EntityTarget, worldPosition: THREE.Vector3) => void) | null = null
   onLocateCountry: ((countryName: string, nearHint: THREE.Vector3) => void) | null = null
-  onAddPin: ((vehicleId: number) => void) | null = null
-  onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
+  onPinMenuOpen: ((vehicleId: number, stepIndex: number, panel: HTMLElement, close: () => void) => void) | null = null
+  onVehicleMenuOpen: ((vehicleId: number, panel: HTMLElement, close: () => void) => void) | null = null
   private container: HTMLDivElement
   private labels = new Map<number, LabelEntry>()
   private vehicleLabels = new Map<number, LabelEntry>()
   private pinLabels = new Map<string, LabelEntry>()
-  private pinLabelOffsets = new Map<string, number>()
   private routeLegLabels = new Map<string, RouteLegLabelEntry>()
+  private activeMenuCleanup: (() => void) | null = null
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -166,22 +167,19 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.entityId)
       if (!this.vehicleLabels.has(item.entityId)) {
-        const { el, textEl, addPinBtn } = this.createVehicleBubble(item.vehicleName, item.hue)
+        const { el, textEl, menuPanel } = this.createVehicleBubble(item.vehicleName, item.hue)
         this.container.appendChild(el)
         const entry: LabelEntry = {
           el,
           textEl,
+          menuPanel,
           worldPos: item.worldPosition.clone(),
           smoothRot: 0,
         }
         this.vehicleLabels.set(item.entityId, entry)
         el.addEventListener('click', (e) => {
           e.stopPropagation()
-          this.onEntityClick?.({ kind: 'VEHICLE', id: item.entityId }, entry.worldPos.clone())
-        })
-        addPinBtn.addEventListener('click', (e) => {
-          e.stopPropagation()
-          this.onAddPin?.(item.entityId)
+          this.openVehicleMenu(item.entityId)
         })
       } else {
         const entry = this.vehicleLabels.get(item.entityId)!
@@ -240,18 +238,13 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.id)
       if (!this.pinLabels.has(item.id)) {
-        const { el, textEl, removeBtn } = this.createSmallBubble(item.label)
-        el.style.transition = 'transform 0.2s ease'
+        const { el, textEl, menuPanel } = this.createSmallBubble(item.label)
         this.container.appendChild(el)
         const worldPos = item.worldPosition.clone()
-        this.pinLabels.set(item.id, { el, textEl, worldPos, smoothRot: 0, id: item.id })
+        this.pinLabels.set(item.id, { el, textEl, menuPanel, worldPos, smoothRot: 0, id: item.id })
         el.addEventListener('click', (e) => {
           e.stopPropagation()
-          this.onEntityClick?.({ kind: 'VEHICLE', id: item.vehicleId }, worldPos.clone())
-        })
-        removeBtn.addEventListener('click', (e) => {
-          e.stopPropagation()
-          this.onRemoveJourneyIntent?.(item.stepIndex, item.vehicleId)
+          this.openPinMenu(item.vehicleId, item.stepIndex)
         })
       } else {
         this.pinLabels.get(item.id)!.worldPos.copy(item.worldPosition)
@@ -300,11 +293,31 @@ export class LabelRenderer {
     }
   }
 
-  /** Animate a pin label upward by offsetPx when a context menu is open (0 to reset). */
-  setPinLabelOffset(vehicleId: number, stepIndex: number, offsetPx: number): void {
-    const key = `${vehicleId}-${stepIndex}`
-    if (offsetPx === 0) this.pinLabelOffsets.delete(key)
-    else this.pinLabelOffsets.set(key, offsetPx)
+  openPinMenu(vehicleId: number, stepIndex: number): void {
+    const entry = this.pinLabels.get(`${vehicleId}-${stepIndex}`)
+    if (!entry?.menuPanel) return
+    this._openMenu(entry.menuPanel, () =>
+      this.onPinMenuOpen?.(vehicleId, stepIndex, entry.menuPanel!, () => this.closeActiveMenu()),
+    )
+  }
+
+  openVehicleMenu(vehicleId: number): void {
+    const entry = this.vehicleLabels.get(vehicleId)
+    if (!entry?.menuPanel) return
+    this._openMenu(entry.menuPanel, () =>
+      this.onVehicleMenuOpen?.(vehicleId, entry.menuPanel!, () => this.closeActiveMenu()),
+    )
+  }
+
+  closeActiveMenu(): void {
+    for (const e of [...this.pinLabels.values(), ...this.vehicleLabels.values()]) {
+      if (e.menuPanel && e.menuPanel.style.display !== 'none') {
+        e.menuPanel.style.display = 'none'
+        e.menuPanel.innerHTML = ''
+      }
+    }
+    this.activeMenuCleanup?.()
+    this.activeMenuCleanup = null
   }
 
   /** Call each frame with the elapsed time in seconds. */
@@ -315,8 +328,8 @@ export class LabelRenderer {
     for (const entry of this.vehicleLabels.values()) {
       this.updateLabel(entry, delta)
     }
-    for (const [id, entry] of this.pinLabels) {
-      this.updatePinLabel(entry, id)
+    for (const entry of this.pinLabels.values()) {
+      this.updatePinLabel(entry)
     }
     for (const entry of this.routeLegLabels.values()) {
       this.updateRouteLegLabel(entry)
@@ -324,6 +337,7 @@ export class LabelRenderer {
   }
 
   dispose(): void {
+    this.closeActiveMenu()
     this.container.remove()
     this.labels.clear()
     this.vehicleLabels.clear()
@@ -334,6 +348,38 @@ export class LabelRenderer {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  private _openMenu(panel: HTMLDivElement, populate: () => void): void {
+    this.closeActiveMenu()
+    panel.innerHTML = ''
+    panel.style.display = 'flex'
+    populate()
+    const handler = (e: MouseEvent) => {
+      if (!panel.contains(e.target as Node)) this.closeActiveMenu()
+    }
+    setTimeout(() => document.addEventListener('mousedown', handler, { once: true }), 0)
+    this.activeMenuCleanup = () => document.removeEventListener('mousedown', handler)
+  }
+
+  private createMenuPanel(): HTMLDivElement {
+    const panel = document.createElement('div')
+    Object.assign(panel.style, {
+      display: 'none',
+      flexDirection: 'column',
+      gap: '4px',
+      background: 'rgba(20,20,28,0.92)',
+      border: '1px solid rgba(255,255,255,0.12)',
+      borderRadius: '8px',
+      padding: '8px',
+      minWidth: '150px',
+      marginBottom: '6px',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+      backdropFilter: 'blur(6px)',
+      pointerEvents: 'auto',
+      whiteSpace: 'nowrap',
+    })
+    return panel
+  }
 
   private createBubble(destination: string, rewardMoney: number, rewardStamps: number): { el: HTMLDivElement; textEl: HTMLSpanElement; locateBtn: HTMLButtonElement } {
     const el = document.createElement('div')
@@ -400,31 +446,12 @@ export class LabelRenderer {
     return { el, textEl, locateBtn }
   }
 
-  private createVehicleBubble(vehicleName: string, hue: number): { el: HTMLDivElement; textEl: HTMLSpanElement; addPinBtn: HTMLButtonElement } {
+  private createVehicleBubble(vehicleName: string, hue: number): { el: HTMLDivElement; textEl: HTMLSpanElement; menuPanel: HTMLDivElement } {
     const hexColor = `#${hsvColor(hue).getHexString()}`
     const coloredSvg = vehicleBubbleSvgRaw
       .replace('#4CAF50', hexColor)
       .replace('fill="#f8fafc"', 'fill="none"')
     const dataUrl = `data:image/svg+xml,${encodeURIComponent(coloredSvg)}`
-
-    const addPinBtn = document.createElement('button')
-    addPinBtn.title = 'Add pin to route'
-    addPinBtn.appendChild(createElement(MapPin, { width: 11, height: 11 }))
-    Object.assign(addPinBtn.style, {
-      background: 'rgba(0,0,0,0.55)',
-      border: '1px solid rgba(255,255,255,0.2)',
-      borderRadius: '50%',
-      width: '20px',
-      height: '20px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: 'pointer',
-      pointerEvents: 'auto',
-      color: '#fff',
-      padding: '0',
-      lineHeight: '0',
-    })
 
     const bubble = document.createElement('div')
     Object.assign(bubble.style, {
@@ -454,40 +481,22 @@ export class LabelRenderer {
     })
     bubble.appendChild(textEl)
 
+    const menuPanel = this.createMenuPanel()
+
     const wrapper = document.createElement('div')
     Object.assign(wrapper.style, {
       position: 'absolute',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: '4px',
       pointerEvents: 'none',
     })
-    wrapper.appendChild(addPinBtn)
+    wrapper.appendChild(menuPanel)
     wrapper.appendChild(bubble)
-    return { el: wrapper, textEl, addPinBtn }
+    return { el: wrapper, textEl, menuPanel }
   }
 
-  private createSmallBubble(label: string): { el: HTMLDivElement; textEl: HTMLSpanElement; removeBtn: HTMLButtonElement } {
-    const removeBtn = document.createElement('button')
-    removeBtn.title = 'Remove step'
-    removeBtn.appendChild(createElement(Trash2, { width: 10, height: 10 }))
-    Object.assign(removeBtn.style, {
-      background: 'rgba(0,0,0,0.55)',
-      border: '1px solid rgba(255,255,255,0.2)',
-      borderRadius: '50%',
-      width: '18px',
-      height: '18px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: 'pointer',
-      pointerEvents: 'auto',
-      color: '#ff6b6b',
-      padding: '0',
-      lineHeight: '0',
-    })
-
+  private createSmallBubble(label: string): { el: HTMLDivElement; textEl: HTMLSpanElement; menuPanel: HTMLDivElement } {
     const bubble = document.createElement('div')
     Object.assign(bubble.style, {
       width: '36px',
@@ -513,18 +522,19 @@ export class LabelRenderer {
     })
     bubble.appendChild(textEl)
 
+    const menuPanel = this.createMenuPanel()
+
     const wrapper = document.createElement('div')
     Object.assign(wrapper.style, {
       position: 'absolute',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: '2px',
       pointerEvents: 'none',
     })
-    wrapper.appendChild(removeBtn)
+    wrapper.appendChild(menuPanel)
     wrapper.appendChild(bubble)
-    return { el: wrapper, textEl, removeBtn }
+    return { el: wrapper, textEl, menuPanel }
   }
 
   private createRouteLegChip(traveltime: number): HTMLDivElement {
@@ -587,7 +597,7 @@ export class LabelRenderer {
     textEl.style.transform = Math.cos(smoothRot) < 0 ? 'rotate(180deg)' : ''
   }
 
-  private updatePinLabel(entry: LabelEntry, id: string): void {
+  private updatePinLabel(entry: LabelEntry): void {
     const blend = this.getHorizonBlend(entry.worldPos)
     entry.el.style.opacity = blend >= 1 ? '0' : String(1 - blend)
     if (blend >= 1) return
@@ -596,10 +606,7 @@ export class LabelRenderer {
     entry.el.style.left = `${screen.x}px`
     entry.el.style.top = `${screen.y}px`
     entry.el.style.transformOrigin = '50% 100%'
-    const offset = this.pinLabelOffsets.get(id) ?? 0
-    entry.el.style.transform = offset > 0
-      ? `translateX(-50%) translateY(calc(-100% - ${offset}px))`
-      : 'translateX(-50%) translateY(-100%)'
+    entry.el.style.transform = 'translateX(-50%) translateY(-100%)'
   }
 
   private updateRouteLegLabel(entry: RouteLegLabelEntry): void {
