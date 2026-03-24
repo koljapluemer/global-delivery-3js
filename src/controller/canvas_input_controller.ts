@@ -7,7 +7,6 @@ import type { Plan } from '../model/types/Plan'
 import type { DerivedPlanState } from '../model/types/DerivedPlanState'
 import type { TileCenter } from './layer_0/tile_centers_api'
 import type { PlanIntentManager } from './plan_intent_manager'
-import type { UndoRedoHistory } from './undo_redo'
 import type { CrateLoadMenu } from '../view/ui/overlay/crate_load_menu'
 import type { PinPlacementPreview } from '../view/game/pin_placement_preview'
 import type { CrateDropPreview } from '../view/game/crate_drop_preview'
@@ -25,7 +24,6 @@ export interface CanvasInputControllerDeps {
   gameItemRenderer: GameItemRenderer
   inputModeActor: Actor<typeof import('./input_mode/input_mode_machine').inputModeMachine>
   intentManager: PlanIntentManager
-  undoHistory: UndoRedoHistory
   getDerived: () => DerivedPlanState
   getPlan: () => Plan
   getLastHoveredTile: () => TileCenter | null
@@ -124,7 +122,6 @@ export class CanvasInputController {
     const {
       inputModeActor,
       intentManager,
-      undoHistory,
       getPlan,
       getLastHoveredTile,
       getLabelRenderer,
@@ -149,7 +146,6 @@ export class CanvasInputController {
         getLabelRenderer()?.openPinMenu(vehicleId, stepIndex)
       } else {
         if (lastHoveredTile) {
-          undoHistory.snapshot(plan)
           intentManager.updateJourneyTarget(stepIndex, vehicleId, lastHoveredTile.tile_id)
         }
         pinPlacementPreview?.hide()
@@ -164,7 +160,6 @@ export class CanvasInputController {
       const vehicleId = ctx.vehicleId!
       const insertAfterStepIndex = ctx.insertAfterStepIndex!
       if (isDrag && lastHoveredTile) {
-        undoHistory.snapshot(plan)
         intentManager.insertJourneyStepAfter(insertAfterStepIndex, vehicleId, lastHoveredTile.tile_id)
       }
       pinPlacementPreview?.hide()
@@ -178,7 +173,6 @@ export class CanvasInputController {
       const unload = ctx.lastValidUnloadTarget
       if (unload) {
         const { toTileId, isDelivery, insertAfterStepIndex } = unload
-        undoHistory.snapshot(plan)
         intentManager.insertCargoStepAfter(
           insertAfterStepIndex,
           isDelivery
@@ -196,7 +190,6 @@ export class CanvasInputController {
     if (state === 'crateLoad') {
       if (!isDrag && ctx.lastValidLoadTarget) {
         const { vehicleId, insertAfterStepIndex } = ctx.lastValidLoadTarget
-        undoHistory.snapshot(plan)
         intentManager.insertCargoStepAfter(insertAfterStepIndex, {
           kind: 'LOAD',
           crateId: ctx.crateId!,
@@ -212,7 +205,6 @@ export class CanvasInputController {
 
     if (state === 'pinPlacement') {
       if (lastHoveredTile) {
-        undoHistory.snapshot(plan)
         if (ctx.insertAfterStepIndex !== undefined) {
           intentManager.addOrMergeJourneyAfter(ctx.insertAfterStepIndex, ctx.vehicleId!, lastHoveredTile.tile_id)
         } else {
@@ -252,7 +244,6 @@ export class CanvasInputController {
           onClose: () => {},
         })
       } else if (meta.entityType === 'INVALID_INTENT') {
-        undoHistory.snapshot(plan)
         intentManager.removeCargoIntent(meta.stepIndex!)
         await rerender()
       }

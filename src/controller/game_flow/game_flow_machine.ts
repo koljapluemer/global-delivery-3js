@@ -1,7 +1,5 @@
 import { createMachine } from 'xstate'
 
-export const INITIAL_LIVES = 3
-export const STAMPS_GOAL_PER_TURN = 3
 
 export type GameFlowEvent =
   | { type: 'START_GAME' }

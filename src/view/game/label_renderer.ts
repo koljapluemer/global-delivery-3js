@@ -19,8 +19,7 @@ const ROTATION_SMOOTH_SPEED = 10.0
 interface CrateLabelData {
   worldPosition: THREE.Vector3
   destinationCountry: string
-  rewardMoney: number
-  rewardStamps: number
+  rewardTimecost: number
   entityId: number
 }
 
@@ -105,7 +104,7 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.entityId)
       if (!this.labels.has(item.entityId)) {
-        const { el, textEl, locateBtn } = this.createBubble(item.destinationCountry, item.rewardMoney, item.rewardStamps)
+        const { el, textEl, locateBtn } = this.createBubble(item.destinationCountry, item.rewardTimecost)
         if (animateInIds?.has(item.entityId)) {
           el.classList.add('crate-arrive')
         }
@@ -153,8 +152,7 @@ export class LabelRenderer {
       data.push({
         worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
         destinationCountry: crate.destinationCountry,
-        rewardMoney: crate.rewardMoney,
-        rewardStamps: crate.rewardStamps,
+        rewardTimecost: crate.rewardTimecost,
         entityId: id,
       })
     }
@@ -385,7 +383,7 @@ export class LabelRenderer {
     return panel
   }
 
-  private createBubble(destination: string, rewardMoney: number, rewardStamps: number): { el: HTMLDivElement; textEl: HTMLSpanElement; locateBtn: HTMLButtonElement } {
+  private createBubble(destination: string, rewardTimecost: number): { el: HTMLDivElement; textEl: HTMLSpanElement; locateBtn: HTMLButtonElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',
@@ -437,7 +435,7 @@ export class LabelRenderer {
     })
 
     const rewardEl = document.createElement('span')
-    rewardEl.textContent = `$${rewardMoney}  ★${rewardStamps}`
+    rewardEl.textContent = `⏱ ${rewardTimecost}`
     Object.assign(rewardEl.style, {
       fontSize: '8px',
       color: '#444',

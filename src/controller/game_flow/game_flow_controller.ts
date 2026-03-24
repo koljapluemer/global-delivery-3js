@@ -1,8 +1,7 @@
 import { createActor } from 'xstate'
-import { gameFlowMachine, INITIAL_LIVES, STAMPS_GOAL_PER_TURN } from './game_flow_machine'
+import { gameFlowMachine } from './game_flow_machine'
 import type { GameState } from '../../model/types/GameState'
 import type { App } from '../../app/App'
-import type { HudPanel } from '../../view/ui/hud_panel/hud_panel'
 import type { MainMenuScreen } from '../../view/ui/screens/main_menu_screen'
 import type { GameOverScreen } from '../../view/ui/screens/game_over_screen'
 import type { PlanIntentManager } from '../plan_intent_manager'
@@ -12,17 +11,12 @@ import { generateWorld, createRandomCrate } from '../../model/world_generator'
 
 export interface GameFlowControllerDeps {
   app: App
-  hudPanel: HudPanel
   gameState: GameState
   mainMenuScreen: MainMenuScreen
   gameOverScreen: GameOverScreen
   intentManager: PlanIntentManager
   tileCentersApi: TileCentersApi
   navApi: NavApi
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function uniqueCountryNames(tileApi: TileCentersApi): string[] {
@@ -40,21 +34,17 @@ function pickUnoccupiedLandTile(navApi: NavApi, intentManager: PlanIntentManager
     ...Object.values(plan.initialState.vehiclePositions),
     ...Object.values(plan.initialState.cratePositions),
   ])
-  // Shuffle-pick until we find an unoccupied tile
   const shuffled = [...landNodeIds].sort(() => Math.random() - 0.5)
   for (const id of shuffled) {
     if (!occupied.has(id)) return id
   }
-  // Fallback: pick any land tile (shouldn't happen with 40k tiles)
   return shuffled[0]
 }
 
 function resetGameState(gameState: GameState): void {
-  gameState.money = 0
-  gameState.stamps = 0
-  gameState.lives = INITIAL_LIVES
-  gameState.stampsGoal = STAMPS_GOAL_PER_TURN
-  gameState.traveltimeBudget = 1000
+  gameState.timecostBudget = 1000
+  gameState.turnNumber = 0
+  gameState.cratesDelivered = 0
 }
 
 export class GameFlowController {
@@ -67,9 +57,8 @@ export class GameFlowController {
   }
 
   start(): void {
-    const { app, gameState, hudPanel } = this.deps
+    const { app, gameState } = this.deps
 
-    // Wire confirm plan from App to game flow machine
     app.onConfirmPlan = () => {
       this.actor.send({ type: 'CONFIRM_PLAN' })
     }
@@ -86,7 +75,6 @@ export class GameFlowController {
           break
 
         case 'PLAN': {
-          gameState.stamps = 0
           if (this.isNewGame) {
             this.isNewGame = false
             const newPlan = generateWorld(this.deps.tileCentersApi, this.deps.navApi)
@@ -98,26 +86,20 @@ export class GameFlowController {
         }
 
         case 'ANIMATE': {
-          const onHudUpdate = () => {
-            hudPanel.update(gameState, 0, false, false)
-          }
-          const onComplete = async () => {
+          const travelCost = app.getDerived().totalTraveltime
+          void app.enterAnimateMode(async (stats) => {
             app.advancePlanToNextTurn()
 
-            // Judge this turn: did the player hit the stamp goal?
-            if (gameState.stamps < STAMPS_GOAL_PER_TURN) {
-              gameState.lives--
-              hudPanel.update(gameState, 0, false, false)
-              // Brief pause so the player sees the life lost
-              await sleep(900)
-            }
+            const turnFee = 100 + 25 * gameState.turnNumber
+            gameState.timecostBudget += stats.timecostEarned - travelCost - turnFee
+            gameState.cratesDelivered += stats.cratesDelivered
+            gameState.turnNumber++
 
-            if (gameState.lives <= 0) {
+            if (gameState.timecostBudget <= 0) {
               this.actor.send({ type: 'ANIMATION_DONE', outcome: 'GAME_OVER' })
               return
             }
 
-            // Drop a new crate onto the globe
             const countryNames = uniqueCountryNames(this.deps.tileCentersApi)
             const newCrate = createRandomCrate(countryNames)
             const tileId = pickUnoccupiedLandTile(this.deps.navApi, this.deps.intentManager)
@@ -126,19 +108,21 @@ export class GameFlowController {
             await app.runCrateArrivalAnimation(crateId, tileId)
 
             this.actor.send({ type: 'ANIMATION_DONE', outcome: 'CONTINUE' })
-          }
-          void app.enterAnimateMode(onHudUpdate, onComplete)
+          })
           break
         }
 
         case 'GAME_OVER':
           app.hidePlanUI()
-          this.deps.gameOverScreen.show()
+          this.deps.gameOverScreen.show({
+            cratesDelivered: gameState.cratesDelivered,
+            turnNumber: gameState.turnNumber,
+            finalBudget: gameState.timecostBudget,
+          })
           break
       }
     })
 
-    // Wire screen button callbacks
     this.deps.mainMenuScreen.onStartGame = () => {
       resetGameState(gameState)
       this.isNewGame = true

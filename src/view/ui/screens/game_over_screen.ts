@@ -7,7 +7,7 @@ const SCREEN_STYLE: Partial<CSSStyleDeclaration> = {
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '2rem',
+  gap: '1.5rem',
   color: '#fff',
 }
 
@@ -31,10 +31,17 @@ const BUTTON_STYLE: Partial<CSSStyleDeclaration> = {
   letterSpacing: '0.04em',
 }
 
+export interface GameOverStats {
+  cratesDelivered: number
+  turnNumber: number
+  finalBudget: number
+}
+
 export class GameOverScreen {
   onRestart: (() => void) | null = null
 
   private el: HTMLElement | null = null
+  private statsEl: HTMLElement | null = null
 
   mount(container: HTMLElement): void {
     const div = document.createElement('div')
@@ -45,6 +52,14 @@ export class GameOverScreen {
     Object.assign(title.style, TITLE_STYLE)
     title.textContent = 'Game Over'
 
+    const statsEl = document.createElement('div')
+    Object.assign(statsEl.style, {
+      fontSize: '1rem',
+      opacity: '0.8',
+      textAlign: 'center',
+      lineHeight: '1.8',
+    })
+
     const btn = document.createElement('button')
     Object.assign(btn.style, BUTTON_STYLE)
     btn.textContent = 'Play Again'
@@ -53,12 +68,21 @@ export class GameOverScreen {
     btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.12)' })
 
     div.appendChild(title)
+    div.appendChild(statsEl)
     div.appendChild(btn)
     this.el = div
+    this.statsEl = statsEl
     container.appendChild(div)
   }
 
-  show(): void {
+  show(stats: GameOverStats): void {
+    if (this.statsEl) {
+      this.statsEl.innerHTML = `
+        Turns survived: <strong>${stats.turnNumber}</strong><br>
+        Crates delivered: <strong>${stats.cratesDelivered}</strong><br>
+        Final budget: <strong style="color: #ff6b6b">${stats.finalBudget}</strong>
+      `
+    }
     if (this.el) this.el.style.display = 'flex'
   }
 

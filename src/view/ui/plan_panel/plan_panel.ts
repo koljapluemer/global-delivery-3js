@@ -4,6 +4,7 @@ import type { Plan, CargoIntent } from '../../../model/types/Plan'
 import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep, DerivedCargoAction } from '../../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
 import type { EntityTarget } from '../../../model/types/EntityTarget'
+import type { TurnEconomy } from '../../../controller/turn_economy'
 import { snapshotBefore } from '../../../controller/plan_deriver'
 
 const DROP_ZONE_STYLE: Record<string, string> = {
@@ -17,7 +18,6 @@ const DROP_ZONE_STYLE: Record<string, string> = {
 
 const DROP_ZONE_HIDDEN = { display: 'none' as const }
 
-/** Single source of truth for journey card normal state. */
 const JOURNEY_CARD_DEFAULT_STYLE: Record<string, string> = {
   background: 'rgba(255,255,255,0.08)',
   border: 'none',
@@ -34,15 +34,15 @@ export class PlanPanel {
   onFocusEntity: ((target: EntityTarget) => void) | null = null
 
   private containerEl: HTMLElement | null = null
-  private aside: HTMLElement | null = null
-  private confirmBtn: HTMLButtonElement | null = null
+  private headerEl: HTMLElement | null = null
+  private stepsEl: HTMLElement | null = null
+  private countryFooterEl: HTMLElement | null = null
   private tileApi: TileCentersApi | null = null
   private draggableCleanups: Array<() => void> = []
   private dropTargetCleanups: Array<() => void> = []
   private monitorCleanup: (() => void) | null = null
   private currentPlan: Plan | null = null
   private currentDerived: DerivedPlanState | null = null
-  /** True while a drag is in progress; prevents update() from replacing DOM and detaching drop targets. */
   private isDragging = false
 
   mount(container: HTMLElement, tileApi: TileCentersApi): void {
@@ -50,8 +50,8 @@ export class PlanPanel {
     Object.assign(aside.style, {
       position: 'fixed',
       left: '0',
-      top: '48px',
-      height: 'calc(100% - 48px)',
+      top: '0',
+      height: '100%',
       display: 'flex',
       flexDirection: 'column',
       background: 'rgba(0,0,0,0.6)',
@@ -62,48 +62,42 @@ export class PlanPanel {
       overflow: 'hidden',
     })
 
-    const content = document.createElement('div')
-    Object.assign(content.style, {
+    // --- Header: score + economy + End Turn button ---
+    const header = document.createElement('div')
+    Object.assign(header.style, {
+      padding: '0.75rem 1rem 0',
+      borderBottom: '1px solid rgba(255,255,255,0.08)',
+      flexShrink: '0',
+    })
+    aside.appendChild(header)
+
+    // --- Scrollable steps area ---
+    const stepsEl = document.createElement('div')
+    Object.assign(stepsEl.style, {
       flex: '1',
       overflowY: 'auto',
-      padding: '1rem',
+      padding: '0.75rem 1rem',
     })
-    aside.appendChild(content)
+    aside.appendChild(stepsEl)
 
-    const footer = document.createElement('div')
-    Object.assign(footer.style, {
-      padding: '0.5rem 1rem 0.75rem',
-      borderTop: '1px solid rgba(255,255,255,0.08)',
-      background: 'rgba(0,0,0,0.6)',
+    // --- Country hover footer ---
+    const countryFooter = document.createElement('div')
+    Object.assign(countryFooter.style, {
+      padding: '0.4rem 1rem',
+      fontSize: '11px',
+      opacity: '0.6',
+      borderTop: '1px solid rgba(255,255,255,0.06)',
+      minHeight: '24px',
+      flexShrink: '0',
     })
-    const confirmBtn = document.createElement('button')
-    Object.assign(confirmBtn.style, {
-      width: '100%',
-      padding: '0.5rem',
-      fontSize: '13px',
-      fontWeight: '600',
-      borderRadius: '6px',
-      border: '1px solid rgba(255,255,255,0.25)',
-      cursor: 'pointer',
-      letterSpacing: '0.03em',
-      background: 'rgba(255,255,255,0.12)',
-      color: '#fff',
-    })
-    confirmBtn.textContent = 'Confirm Plan'
-    confirmBtn.addEventListener('click', () => { if (!confirmBtn.disabled) this.onConfirmPlan?.() })
-    confirmBtn.addEventListener('mouseenter', () => {
-      if (!confirmBtn.disabled) confirmBtn.style.background = 'rgba(255,255,255,0.22)'
-    })
-    confirmBtn.addEventListener('mouseleave', () => {
-      if (!confirmBtn.disabled) confirmBtn.style.background = 'rgba(255,255,255,0.12)'
-    })
-    footer.appendChild(confirmBtn)
-    aside.appendChild(footer)
+    aside.appendChild(countryFooter)
 
     this.containerEl = aside
-    this.aside = content
-    this.confirmBtn = confirmBtn
+    this.headerEl = header
+    this.stepsEl = stepsEl
+    this.countryFooterEl = countryFooter
     this.tileApi = tileApi
+
     container.appendChild(aside)
 
     this.monitorCleanup = monitorForElements({
@@ -128,8 +122,9 @@ export class PlanPanel {
     this.monitorCleanup?.()
     this.monitorCleanup = null
     this.containerEl = null
-    this.aside = null
-    this.confirmBtn = null
+    this.headerEl = null
+    this.stepsEl = null
+    this.countryFooterEl = null
     this.tileApi = null
   }
 
@@ -141,57 +136,170 @@ export class PlanPanel {
     if (this.containerEl) this.containerEl.style.display = 'flex'
   }
 
-  update(plan: Plan, derived: DerivedPlanState, canConfirm: boolean): void {
-    if (!this.aside || !this.tileApi) return
+  updateHoveredCountry(name: string | null): void {
+    if (this.countryFooterEl) {
+      this.countryFooterEl.textContent = name ?? ''
+    }
+  }
+
+  update(plan: Plan, derived: DerivedPlanState, economy: TurnEconomy, score: { turnNumber: number; cratesDelivered: number }, canConfirm: boolean): void {
+    if (!this.headerEl || !this.stepsEl || !this.tileApi) return
     if (this.isDragging) return
     this.currentPlan = plan
     this.currentDerived = derived
+
+    this.renderHeader(economy, score, canConfirm)
+    this.renderSteps(plan, derived)
+  }
+
+  private renderHeader(economy: TurnEconomy, score: { turnNumber: number; cratesDelivered: number }, canConfirm: boolean): void {
+    if (!this.headerEl) return
+    this.headerEl.innerHTML = ''
+
+    // Score row
+    const scoreRow = document.createElement('div')
+    Object.assign(scoreRow.style, {
+      display: 'flex',
+      gap: '0.75rem',
+      fontSize: '12px',
+      fontWeight: '600',
+      marginBottom: '0.6rem',
+      opacity: '0.9',
+    })
+    const turnEl = document.createElement('span')
+    turnEl.textContent = `Turn ${score.turnNumber + 1}`
+    const cratesEl = document.createElement('span')
+    cratesEl.textContent = `${score.cratesDelivered} delivered`
+    Object.assign(cratesEl.style, { opacity: '0.7' })
+    scoreRow.appendChild(turnEl)
+    scoreRow.appendChild(cratesEl)
+    this.headerEl.appendChild(scoreRow)
+
+    // Economy table
+    const table = document.createElement('div')
+    Object.assign(table.style, {
+      fontSize: '12px',
+      marginBottom: '0.6rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '2px',
+    })
+
+    const row = (label: string, value: number, sign: '+' | '-' | ''): HTMLElement => {
+      const el = document.createElement('div')
+      Object.assign(el.style, {
+        display: 'flex',
+        justifyContent: 'space-between',
+        opacity: '0.85',
+      })
+      const labelEl = document.createElement('span')
+      labelEl.textContent = label
+      Object.assign(labelEl.style, { opacity: '0.7' })
+      const valueEl = document.createElement('span')
+      valueEl.textContent = sign === '+' ? `+${value}` : sign === '-' ? `-${value}` : `${value}`
+      el.appendChild(labelEl)
+      el.appendChild(valueEl)
+      return el
+    }
+
+    table.appendChild(row('Budget', economy.currentBudget, ''))
+    table.appendChild(row('Travel Time Cost', economy.travelCost, '-'))
+    table.appendChild(row('Turn Fee', economy.turnFee, '-'))
+    table.appendChild(row('Delivery Reward', economy.reward, '+'))
+
+    const divider = document.createElement('div')
+    Object.assign(divider.style, {
+      borderTop: '1px solid rgba(255,255,255,0.2)',
+      margin: '3px 0',
+    })
+    table.appendChild(divider)
+
+    const afterRow = document.createElement('div')
+    Object.assign(afterRow.style, {
+      display: 'flex',
+      justifyContent: 'space-between',
+      fontWeight: '600',
+      fontSize: '12px',
+    })
+    const afterLabel = document.createElement('span')
+    afterLabel.textContent = 'After Turn'
+    const afterValue = document.createElement('span')
+    afterValue.textContent = String(economy.afterTurn)
+    afterValue.style.color = economy.afterTurn <= 0 ? '#ff6b6b' : '#fff'
+    afterRow.appendChild(afterLabel)
+    afterRow.appendChild(afterValue)
+    table.appendChild(afterRow)
+
+    this.headerEl.appendChild(table)
+
+    // End Turn button
+    const confirmBtn = document.createElement('button')
+    Object.assign(confirmBtn.style, {
+      width: '100%',
+      padding: '0.45rem',
+      marginBottom: '0.75rem',
+      fontSize: '13px',
+      fontWeight: '600',
+      borderRadius: '6px',
+      border: '1px solid rgba(255,255,255,0.25)',
+      cursor: 'pointer',
+      letterSpacing: '0.03em',
+      background: canConfirm ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)',
+      color: canConfirm ? '#fff' : 'rgba(255,255,255,0.35)',
+    })
+    if (!canConfirm) {
+      confirmBtn.style.cursor = 'not-allowed'
+      confirmBtn.style.borderColor = 'rgba(255,255,255,0.1)'
+    }
+    confirmBtn.disabled = !canConfirm
+    confirmBtn.textContent = 'End Turn'
+    confirmBtn.addEventListener('click', () => { if (!confirmBtn.disabled) this.onConfirmPlan?.() })
+    confirmBtn.addEventListener('mouseenter', () => {
+      if (!confirmBtn.disabled) confirmBtn.style.background = 'rgba(255,255,255,0.22)'
+    })
+    confirmBtn.addEventListener('mouseleave', () => {
+      if (!confirmBtn.disabled) confirmBtn.style.background = 'rgba(255,255,255,0.12)'
+    })
+    this.headerEl.appendChild(confirmBtn)
+  }
+
+  private renderSteps(plan: Plan, derived: DerivedPlanState): void {
+    if (!this.stepsEl) return
 
     for (const c of this.draggableCleanups) c()
     this.draggableCleanups = []
     for (const c of this.dropTargetCleanups) c()
     this.dropTargetCleanups = []
 
-    this.aside.innerHTML = ''
-
-    if (this.confirmBtn) {
-      this.confirmBtn.disabled = !canConfirm
-      Object.assign(this.confirmBtn.style, {
-        background: canConfirm ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)',
-        color: canConfirm ? '#fff' : 'rgba(255,255,255,0.35)',
-        cursor: canConfirm ? 'pointer' : 'not-allowed',
-        borderColor: canConfirm ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)',
-      })
-    }
+    this.stepsEl.innerHTML = ''
 
     if (derived.steps.length === 0) {
       const empty = document.createElement('p')
       empty.textContent = 'No steps yet. Click a vehicle to add waypoints.'
       Object.assign(empty.style, { fontSize: '12px', opacity: '0.6', margin: '0' })
-      this.aside.appendChild(empty)
+      this.stepsEl.appendChild(empty)
       return
     }
 
     const steps = derived.steps
     let journeyNum = 0
     for (let i = 0; i < steps.length; i++) {
-      if (i === 0) this.aside.appendChild(this.createGhostZone('before-all'))
+      if (i === 0) this.stepsEl.appendChild(this.createGhostZone('before-all'))
       const step = steps[i]
       if (step.kind === 'JOURNEY') {
         journeyNum++
-        this.aside.appendChild(this.buildJourneySection(step as DerivedJourneyStep, plan, journeyNum))
+        this.stepsEl.appendChild(this.buildJourneySection(step as DerivedJourneyStep, plan, journeyNum))
       } else {
-        this.aside.appendChild(this.buildCargoSection(step as DerivedCargoStep, plan))
+        this.stepsEl.appendChild(this.buildCargoSection(step as DerivedCargoStep, plan))
       }
-      this.aside.appendChild(this.createGhostZone(i))
+      this.stepsEl.appendChild(this.createGhostZone(i))
     }
-    this.aside.appendChild(this.createGhostZone('after-all'))
+    this.stepsEl.appendChild(this.createGhostZone('after-all'))
 
     this.registerDraggables()
     this.registerDropTargets()
   }
 
-  /** Create a ghost drop zone (between steps / before first / after last). Always in DOM, hidden by default. */
   private createGhostZone(afterStepIndex: number | 'before-all' | 'after-all'): HTMLElement {
     const zone = document.createElement('div')
     Object.assign(zone.style, { ...DROP_ZONE_STYLE, ...DROP_ZONE_HIDDEN })
@@ -203,9 +311,9 @@ export class PlanPanel {
   }
 
   private registerDraggables(): void {
-    if (!this.aside || !this.currentPlan || !this.currentDerived) return
-    const journeyCards = this.aside.querySelectorAll<HTMLElement>('[data-draggable="journey"]')
-    const cargoCards = this.aside.querySelectorAll<HTMLElement>('[data-draggable="cargo"]')
+    if (!this.stepsEl || !this.currentPlan || !this.currentDerived) return
+    const journeyCards = this.stepsEl.querySelectorAll<HTMLElement>('[data-draggable="journey"]')
+    const cargoCards = this.stepsEl.querySelectorAll<HTMLElement>('[data-draggable="cargo"]')
     journeyCards.forEach((el) => {
       const vehicleId = Number(el.dataset.vehicleId)
       const fromStepIndex = Number(el.dataset.stepIndex)
@@ -226,11 +334,11 @@ export class PlanPanel {
   }
 
   private registerDropTargets(): void {
-    if (!this.aside || !this.currentDerived) return
+    if (!this.stepsEl || !this.currentDerived) return
     for (const c of this.dropTargetCleanups) c()
     this.dropTargetCleanups = []
     const steps = this.currentDerived.steps
-    const zones = this.aside.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
+    const zones = this.stepsEl.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
     zones.forEach((zone) => {
       const dropType = zone.dataset.dropType
       if (dropType === 'ghost') {
@@ -278,8 +386,8 @@ export class PlanPanel {
   }
 
   private showDropTargets(dragType: 'journey' | 'cargo'): void {
-    if (!this.aside) return
-    const zones = this.aside.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
+    if (!this.stepsEl) return
+    const zones = this.stepsEl.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
     zones.forEach((zone) => {
       const dropType = zone.dataset.dropType
       if (dropType === 'ghost') {
@@ -290,16 +398,16 @@ export class PlanPanel {
         }
       }
     })
-    this.aside.classList.add('plan-panel-dragging')
+    this.stepsEl.classList.add('plan-panel-dragging')
   }
 
   private hideDropTargets(): void {
     this.isDragging = false
-    const zones = this.aside?.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
+    const zones = this.stepsEl?.querySelectorAll<HTMLElement>('.plan-panel-drop-zone')
     zones?.forEach((zone) => {
       Object.assign(zone.style, DROP_ZONE_HIDDEN)
     })
-    this.aside?.classList.remove('plan-panel-dragging')
+    this.stepsEl?.classList.remove('plan-panel-dragging')
   }
 
   private buildJourneySection(step: DerivedJourneyStep, plan: Plan, journeyNum: number): HTMLElement {

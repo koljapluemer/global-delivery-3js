@@ -2,7 +2,6 @@ import * as THREE from 'three'
 import type { Plan } from '../../model/types/Plan'
 import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep } from '../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../layer_0/tile_centers_api'
-import type { GameState } from '../../model/types/GameState'
 import type { LevelStats } from '../../model/types/LevelStats'
 import type { AnimateRenderer } from '../../view/game/animate_renderer'
 import { emptyLevelStats } from '../../model/types/LevelStats'
@@ -20,8 +19,6 @@ export interface PlanAnimatorRunOptions {
   tileApi: TileCentersApi
   globeCenter: THREE.Vector3
   animRenderer: AnimateRenderer
-  gameState: GameState
-  onHudUpdate: () => void
   onTrackTile?: (tileId: number) => void
 }
 
@@ -107,7 +104,7 @@ export class PlanAnimator {
   }
 
   async run(opts: PlanAnimatorRunOptions): Promise<LevelStats> {
-    const { plan, derived, tileApi, globeCenter, animRenderer, gameState, onHudUpdate, onTrackTile } = opts
+    const { plan, derived, tileApi, globeCenter, animRenderer, onTrackTile } = opts
 
     await animRenderer.setup(plan, derived.initialSnapshot, tileApi, globeCenter)
 
@@ -133,11 +130,10 @@ export class PlanAnimator {
         await Promise.all(
           journeyStep.journeys.map(async (j) => {
             if (j.pathTileIds.length < 2) return
-            const tilesTraversed = await this.animateVehicleAlongPath(
+            await this.animateVehicleAlongPath(
               j.vehicleId, j.pathTileIds, plan, tileApi, globeCenter, animRenderer,
               { trackedVehicleId: stepTrackedId, onTrackTile },
             )
-            stats.pathTilesTraversed += tilesTraversed
           }),
         )
       } else {
@@ -166,12 +162,8 @@ export class PlanAnimator {
           case 'DELIVER': {
             const crate = plan.crates[intent.crateId]
             if (crate) {
-              gameState.money += crate.rewardMoney
-              gameState.stamps += crate.rewardStamps
-              stats.moneyEarned += crate.rewardMoney
-              stats.stampsEarned += crate.rewardStamps
+              stats.timecostEarned += crate.rewardTimecost
               stats.cratesDelivered++
-              onHudUpdate()
             }
             animRenderer.destroyCrate(intent.crateId)
             const slot = vehicleSlots.get(intent.vehicleId) ?? 1

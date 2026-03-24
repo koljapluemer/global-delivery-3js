@@ -11,10 +11,9 @@ function pickRandom<T>(arr: readonly T[]): T {
 }
 
 export function createRandomCrate(countryNames: string[]): Crate {
-  const rewardMoney = (Math.floor(Math.random() * 20) + 1) * 50
-  const rewardStamps = Math.floor(Math.random() * 5) + 1
+  const rewardTimecost = Math.round(Math.random() * 250 + 50)
   const destinationCountry = pickRandom(countryNames)
-  return { destinationCountry, rewardMoney, rewardStamps }
+  return { destinationCountry, rewardTimecost }
 }
 
 export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): Plan {

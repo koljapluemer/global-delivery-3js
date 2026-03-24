@@ -1,0 +1,6 @@
+- There seems to be some issue with vehicle positions in second turn.
+- Double mention of cargo on steps
+- Cargo intents being pushed around by step insertion
+- Mousewheel not caught by sidebar
+- No need to be so fine grained with drop targets for journey
+- less finicky, higher rewards for delivery
