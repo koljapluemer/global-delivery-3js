@@ -119,12 +119,15 @@ export class PlanIntentManager {
    *  (after afterIndex) that doesn't already have this vehicle. Falls back to inserting a new
    *  step at afterIndex+1 if no suitable step exists. Returns the landing step index. */
   addOrMergeJourneyAfter(afterIndex: number, vehicleId: number, toTileId: number): number {
-    // Advance past cargo steps for this vehicle between afterIndex and the next journey step.
-    // Those cargo ops depend on the vehicle staying put, so the new journey must come after them.
+    // Advance past cargo steps for this vehicle, skipping unrelated journey steps,
+    // until we hit a journey step that involves this vehicle (it moves to a new position).
     let effectiveAfter = afterIndex
     for (let i = afterIndex + 1; i < this.plan.steps.length; i++) {
       const step = this.plan.steps[i]
-      if (step.kind === 'JOURNEY') break
+      if (step.kind === 'JOURNEY') {
+        if (step.journeys.some((j) => j.vehicleId === vehicleId)) break
+        continue
+      }
       const a = step.action
       if ((a.kind === 'LOAD' || a.kind === 'UNLOAD' || a.kind === 'DELIVER') && a.vehicleId === vehicleId) {
         effectiveAfter = i

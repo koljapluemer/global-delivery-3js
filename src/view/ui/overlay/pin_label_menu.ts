@@ -30,7 +30,11 @@ export function buildPinMenu(panel: HTMLElement, data: PinMenuData, callbacks: P
   panel.appendChild(buildActionBtn(Trash2, 'Remove pin', '#ff6b6b', callbacks.onRemovePin))
 
   const snapshot = derived.stepSnapshots[stepIndex]
-  const onBoardIds = snapshot ? [...(snapshot.vehicleCargo.get(vehicleId) ?? [])] : []
+  const droppedOff = collectDroppedOff(plan, derived, vehicleId, stepIndex)
+  const droppedOffIds = new Set(droppedOff.map((d) => d.crateId))
+  const onBoardIds = snapshot
+    ? [...(snapshot.vehicleCargo.get(vehicleId) ?? [])].filter((id) => !droppedOffIds.has(id))
+    : []
   if (onBoardIds.length > 0) {
     panel.appendChild(buildSeparator())
     for (const crateId of onBoardIds) {
@@ -39,8 +43,7 @@ export function buildPinMenu(panel: HTMLElement, data: PinMenuData, callbacks: P
     }
   }
 
-  const droppedOff = collectDroppedOff(plan, derived, vehicleId, stepIndex)
-  if (droppedOff.length > 0 && onBoardIds.length === 0) panel.appendChild(buildSeparator())
+  if (droppedOff.length > 0) panel.appendChild(buildSeparator())
   for (const { label, cargoStepIndex } of droppedOff) {
     panel.appendChild(buildDroppedOffRow(label + ' ✓', colorStyle, () => callbacks.onRemoveUnload(cargoStepIndex)))
   }

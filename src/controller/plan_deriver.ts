@@ -268,6 +268,9 @@ export function findFirstValidInsertionPoint(
   intent: CargoIntent,
   derived: DerivedPlanState,
 ): number | null {
+  if (intentInValidCargoActions(intent, derived.initialSnapshot.validCargoActions)) {
+    return -1
+  }
   for (let i = 0; i < derived.stepSnapshots.length; i++) {
     if (intentInValidCargoActions(intent, derived.stepSnapshots[i].validCargoActions)) {
       return i

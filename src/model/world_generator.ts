@@ -10,8 +10,13 @@ function pickRandom<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
+const CRATE_REWARD_MIN = 50
+const CRATE_REWARD_MAX = 300
+const CRATE_REWARD_STEP = 50
+
 export function createRandomCrate(countryNames: string[]): Crate {
-  const rewardTimecost = Math.round(Math.random() * 250 + 50)
+  const numSteps = (CRATE_REWARD_MAX - CRATE_REWARD_MIN) / CRATE_REWARD_STEP
+  const rewardTimecost = CRATE_REWARD_MIN + Math.floor(Math.random() * (numSteps + 1)) * CRATE_REWARD_STEP
   const destinationCountry = pickRandom(countryNames)
   return { destinationCountry, rewardTimecost }
 }

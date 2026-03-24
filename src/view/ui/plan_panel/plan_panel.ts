@@ -292,7 +292,7 @@ export class PlanPanel {
       } else {
         this.stepsEl.appendChild(this.buildCargoSection(step as DerivedCargoStep, plan))
       }
-      this.stepsEl.appendChild(this.createGhostZone(i))
+      this.stepsEl.appendChild(this.createGhostZone(i, steps[i].kind))
     }
     this.stepsEl.appendChild(this.createGhostZone('after-all'))
 
@@ -300,13 +300,14 @@ export class PlanPanel {
     this.registerDropTargets()
   }
 
-  private createGhostZone(afterStepIndex: number | 'before-all' | 'after-all'): HTMLElement {
+  private createGhostZone(afterStepIndex: number | 'before-all' | 'after-all', prevStepKind?: string): HTMLElement {
     const zone = document.createElement('div')
     Object.assign(zone.style, { ...DROP_ZONE_STYLE, ...DROP_ZONE_HIDDEN })
     zone.className = 'plan-panel-drop-zone'
     zone.dataset.dropType = 'ghost'
     zone.dataset.afterStepIndex =
       afterStepIndex === 'before-all' ? 'before' : afterStepIndex === 'after-all' ? 'after' : String(afterStepIndex)
+    zone.dataset.prevStepKind = prevStepKind ?? 'none'
     return zone
   }
 
@@ -391,7 +392,14 @@ export class PlanPanel {
     zones.forEach((zone) => {
       const dropType = zone.dataset.dropType
       if (dropType === 'ghost') {
-        Object.assign(zone.style, DROP_ZONE_STYLE, { display: 'block' })
+        if (dragType === 'cargo') {
+          Object.assign(zone.style, DROP_ZONE_STYLE, { display: 'block' })
+        } else if (dragType === 'journey') {
+          const prevKind = zone.dataset.prevStepKind
+          if (prevKind === 'none' || prevKind === 'JOURNEY') {
+            Object.assign(zone.style, DROP_ZONE_STYLE, { display: 'block' })
+          }
+        }
       } else if (dropType === 'in-step') {
         if (dragType === 'journey') {
           Object.assign(zone.style, DROP_ZONE_STYLE, { display: 'block', flex: '0 0 auto', minWidth: '80px' })

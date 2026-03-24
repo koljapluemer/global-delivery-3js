@@ -1,0 +1,8 @@
+- Architect cleanly
+- Use patterns correctly
+- Keep files, functions and classes slim
+- A given function should only operate on one level of abstraction, not multiple
+- Build orchestration structures when appropriate
+- Use types/interfaces. Ensure clean linter. Do not disable linter. Do not use "!"
+- `App.ts` is a pure orchestration component!
+- Ensure build is green.

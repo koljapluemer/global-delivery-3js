@@ -45,7 +45,7 @@ export class MainCamera {
     canvas.addEventListener('mouseup', () => { this.dragging = false })
     canvas.addEventListener('mouseleave', () => { this.dragging = false })
     canvas.addEventListener('mousemove', (e) => this.onMouseMove(e))
-    window.addEventListener('wheel', (e) => this.onWheel(e), { passive: false })
+    canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false })
     canvas.addEventListener('contextmenu', (e) => e.preventDefault())
   }
 

@@ -357,6 +357,7 @@ export class LabelRenderer {
     panel.style.display = 'flex'
     populate()
     const handler = (e: MouseEvent) => {
+      if (e.button !== 0) return
       if (!panel.contains(e.target as Node)) this.closeActiveMenu()
     }
     setTimeout(() => document.addEventListener('mousedown', handler, { once: true }), 0)
