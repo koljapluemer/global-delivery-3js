@@ -34,7 +34,7 @@ import type { Actor } from 'xstate'
 import { AnimateRenderer } from '../view/game/animate_renderer'
 import { PlanAnimator } from '../controller/animate_mode/plan_animator'
 import { CrateArrivalAnimator } from '../controller/animate_mode/crate_arrival_animator'
-import type { SpawnedCrate } from '../controller/crate_spawner'
+import type { PlannedCrate } from '../controller/crate_spawner'
 import { CountryHighlightRenderer } from '../view/game/country_highlight_renderer'
 import { FairTileHighlightRenderer } from '../view/game/fair_tile_highlight_renderer'
 import { VehiclePlacementPreview } from '../view/game/vehicle_placement_preview'
@@ -524,12 +524,14 @@ export class App {
     this.fairTileHighlightRenderer?.hide()
   }
 
-  async runBatchCrateArrival(spawned: SpawnedCrate[]): Promise<void> {
-    for (let i = 0; i < spawned.length; i++) {
-      const item = spawned[i]
+  async runBatchCrateArrival(planned: PlannedCrate[]): Promise<void> {
+    const { intentManager } = this.deps
+    for (let i = 0; i < planned.length; i++) {
+      const item = planned[i]
       if (item === undefined) continue
-      await this.runCrateArrivalAnimation(item.crateId, item.tileId)
-      if (i < spawned.length - 1) {
+      const crateId = intentManager.addGroundCrate(item.tileId, item.crate)
+      await this.runCrateArrivalAnimation(crateId, item.tileId)
+      if (i < planned.length - 1) {
         await this.delaySeconds(INTER_CRATE_DELAY_S)
       }
     }

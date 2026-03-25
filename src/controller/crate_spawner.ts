@@ -2,12 +2,14 @@ import type { NavApi } from './navigation'
 import type { TileCentersApi } from './layer_0/tile_centers_api'
 import type { PlanIntentManager } from './plan_intent_manager'
 import type { SeededRng } from '../util/seeded_rng'
+import type { Crate } from '../model/types/Crate'
 import { computeFairTileSet } from './fair_tiles'
 import { createRandomCrate } from '../model/world_generator'
 
-export interface SpawnedCrate {
-  crateId: number
+/** A crate planned for spawning — not yet added to the plan. */
+export interface PlannedCrate {
   tileId: number
+  crate: Crate
 }
 
 export interface CrateSpawnerDeps {
@@ -28,11 +30,12 @@ export class CrateSpawner {
   }
 
   /**
-   * Spawns 2–5 crates. The first is always placed on a fair tile.
+   * Plans 2–5 crates without mutating the plan.
+   * The first is always placed on a fair tile.
    * Each subsequent crate has a 50/50 chance of fair vs. any random land tile.
-   * Returns the list of spawned crates (may be fewer than requested if tiles are exhausted).
+   * The caller is responsible for adding each crate to the plan and animating sequentially.
    */
-  spawnBatch(): SpawnedCrate[] {
+  planBatch(): PlannedCrate[] {
     const { navApi, tileCentersApi, intentManager, rng } = this.deps
     const plan = intentManager.getPlan()
     const fairTileSet = computeFairTileSet(plan, navApi, tileCentersApi)
@@ -41,7 +44,7 @@ export class CrateSpawner {
     const allCountryNames = this.allCountryNames()
     const occupied = this.buildOccupied()
     const count = this.pickCount()
-    const result: SpawnedCrate[] = []
+    const result: PlannedCrate[] = []
 
     for (let i = 0; i < count; i++) {
       const useFair = i === 0 || rng.next() < 0.5
@@ -53,9 +56,8 @@ export class CrateSpawner {
 
       const countries = useFair && fairCountryNames.length > 0 ? fairCountryNames : allCountryNames
       const crate = createRandomCrate(countries, rng)
-      const crateId = intentManager.addGroundCrate(tileId, crate)
       occupied.add(tileId)
-      result.push({ crateId, tileId })
+      result.push({ tileId, crate })
     }
 
     return result

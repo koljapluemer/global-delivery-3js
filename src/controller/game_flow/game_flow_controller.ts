@@ -11,7 +11,7 @@ import type { CardPickScreen } from '../../view/ui/screens/card_pick_screen'
 import type { PlanIntentManager } from '../plan_intent_manager'
 import type { TileCentersApi } from '../layer_0/tile_centers_api'
 import type { NavApi } from '../navigation'
-import type { SpawnedCrate } from '../crate_spawner'
+import type { PlannedCrate } from '../crate_spawner'
 import { emptyPlan } from '../../model/world_generator'
 import { SeededRng } from '../../util/seeded_rng'
 import { CrateSpawner } from '../crate_spawner'
@@ -70,7 +70,7 @@ export class GameFlowController {
           }
           app.hidePlanUI()
           void this.runCardPickSequence(STARTING_CARD_KINDS).then(async () => {
-            const spawned = this.spawnCrateBatch()
+            const spawned = this.planCrateBatch()
             await app.runBatchCrateArrival(spawned)
             this.actor.send({ type: 'CARD_PICK_DONE' })
           })
@@ -98,7 +98,7 @@ export class GameFlowController {
               return
             }
 
-            const spawned = this.spawnCrateBatch()
+            const spawned = this.planCrateBatch()
             await app.runBatchCrateArrival(spawned)
 
             this.actor.send({ type: 'ANIMATION_DONE', outcome: 'CONTINUE' })
@@ -133,14 +133,14 @@ export class GameFlowController {
     this.actor.start()
   }
 
-  private spawnCrateBatch(): SpawnedCrate[] {
+  private planCrateBatch(): PlannedCrate[] {
     const spawner = new CrateSpawner({
       navApi: this.deps.navApi,
       tileCentersApi: this.deps.tileCentersApi,
       intentManager: this.deps.intentManager,
       rng: this.rng,
     })
-    return spawner.spawnBatch()
+    return spawner.planBatch()
   }
 
   private hideAllScreens(): void {

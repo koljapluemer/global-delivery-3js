@@ -119,6 +119,7 @@ export class LabelRenderer {
         const { el, textEl, lifetimeEl, locateBtn } = this.createBubble(item.destinationCountry, item.rewardTimecost, item.remainingLifetime)
         if (animateInIds?.has(item.entityId)) {
           el.classList.add('crate-arrive')
+          el.addEventListener('animationend', () => el.classList.remove('crate-arrive'), { once: true })
         }
         this.container.appendChild(el)
         const entry: LabelEntry = {
@@ -126,7 +127,7 @@ export class LabelRenderer {
           textEl,
           lifetimeEl,
           worldPos: item.worldPosition.clone(),
-          smoothRot: 0,
+          smoothRot: this.computeTargetRot(item.worldPosition),
           destinationCountry: item.destinationCountry,
         }
         this.labels.set(item.entityId, entry)
@@ -591,6 +592,26 @@ export class LabelRenderer {
     })
     el.appendChild(span)
     return el
+  }
+
+  private computeTargetRot(worldPos: THREE.Vector3): number {
+    const screen = this.worldToScreen(worldPos)
+    const blend = this.getHorizonBlend(worldPos)
+    if (blend <= 0) return 0
+
+    const globeSc = this.worldToScreen(this.globeCenter)
+    const globeV2 = new THREE.Vector2(globeSc.x, globeSc.y)
+    const anchorV2 = new THREE.Vector2(screen.x, screen.y)
+    const horizonPt = this.horizonIntersection(globeV2, anchorV2)
+
+    const finalX = THREE.MathUtils.lerp(screen.x, horizonPt.x, blend)
+    const finalY = THREE.MathUtils.lerp(screen.y, horizonPt.y, blend)
+    const outX = finalX - globeSc.x
+    const outY = finalY - globeSc.y
+    if (outX * outX + outY * outY > 1e-4) {
+      return Math.atan2(outY, outX) + HORIZON_ROTATION_OFFSET
+    }
+    return 0
   }
 
   private updateLabel(entry: LabelEntry, delta: number): void {
