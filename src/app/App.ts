@@ -34,11 +34,14 @@ import type { Actor } from 'xstate'
 import { AnimateRenderer } from '../view/game/animate_renderer'
 import { PlanAnimator } from '../controller/animate_mode/plan_animator'
 import { CrateArrivalAnimator } from '../controller/animate_mode/crate_arrival_animator'
+import type { SpawnedCrate } from '../controller/crate_spawner'
 import { CountryHighlightRenderer } from '../view/game/country_highlight_renderer'
 import { FairTileHighlightRenderer } from '../view/game/fair_tile_highlight_renderer'
 import { VehiclePlacementPreview } from '../view/game/vehicle_placement_preview'
 import { AvailableVehicleTypes } from '../model/db/vehicles'
 import type { VehicleSetupPopup } from '../view/ui/overlay/vehicle_setup_popup'
+
+const INTER_CRATE_DELAY_S = 0.3
 
 export interface AppDeps {
   renderer: THREE.WebGLRenderer
@@ -498,13 +501,51 @@ export class App {
     }
 
     const plan = intentManager.getPlan()
+    const survivingCrateIds = new Set(Object.keys(cratePositions).map(Number))
+    const updatedCrates: typeof plan.crates = {}
+    for (const [crateIdStr, crate] of Object.entries(plan.crates)) {
+      const crateId = Number(crateIdStr)
+      if (!survivingCrateIds.has(crateId)) continue
+      const newLifetime = crate.remainingLifetime - 1
+      if (newLifetime <= 0) {
+        delete cratePositions[crateId]
+      } else {
+        updatedCrates[crateId] = { ...crate, remainingLifetime: newLifetime }
+      }
+    }
+
     intentManager.resetPlan({
       ...plan,
+      crates: updatedCrates,
       initialState: { vehiclePositions, cratePositions },
       steps: [],
     })
 
     this.fairTileHighlightRenderer?.hide()
+  }
+
+  async runBatchCrateArrival(spawned: SpawnedCrate[]): Promise<void> {
+    for (let i = 0; i < spawned.length; i++) {
+      const item = spawned[i]
+      if (item === undefined) continue
+      await this.runCrateArrivalAnimation(item.crateId, item.tileId)
+      if (i < spawned.length - 1) {
+        await this.delaySeconds(INTER_CRATE_DELAY_S)
+      }
+    }
+  }
+
+  private async delaySeconds(seconds: number): Promise<void> {
+    let elapsed = 0
+    await new Promise<void>((resolve) => {
+      this.frameCallback = (delta) => {
+        elapsed += delta
+        if (elapsed >= seconds) {
+          this.frameCallback = null
+          resolve()
+        }
+      }
+    })
   }
 
   resize(): void {

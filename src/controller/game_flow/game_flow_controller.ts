@@ -3,6 +3,7 @@ import { gameFlowMachine } from './game_flow_machine'
 import { CARD_DEFINITIONS, STARTING_CARD_KINDS } from '../../model/db/cards'
 import type { CardKind } from '../../model/types/Card'
 import type { GameState } from '../../model/types/GameState'
+import type { GameSeed } from '../../model/types/GameSeed'
 import type { App } from '../../app/App'
 import type { MainMenuScreen } from '../../view/ui/screens/main_menu_screen'
 import type { GameOverScreen } from '../../view/ui/screens/game_over_screen'
@@ -10,7 +11,10 @@ import type { CardPickScreen } from '../../view/ui/screens/card_pick_screen'
 import type { PlanIntentManager } from '../plan_intent_manager'
 import type { TileCentersApi } from '../layer_0/tile_centers_api'
 import type { NavApi } from '../navigation'
-import { emptyPlan, addInitialCrates, createRandomCrate } from '../../model/world_generator'
+import type { SpawnedCrate } from '../crate_spawner'
+import { emptyPlan } from '../../model/world_generator'
+import { SeededRng } from '../../util/seeded_rng'
+import { CrateSpawner } from '../crate_spawner'
 
 export interface GameFlowControllerDeps {
   app: App
@@ -23,28 +27,6 @@ export interface GameFlowControllerDeps {
   navApi: NavApi
 }
 
-function uniqueCountryNames(tileApi: TileCentersApi): string[] {
-  const seen = new Set<string>()
-  for (const tile of tileApi.getAll()) {
-    if (tile.country_name) seen.add(tile.country_name)
-  }
-  return Array.from(seen)
-}
-
-function pickUnoccupiedLandTile(navApi: NavApi, intentManager: PlanIntentManager): number {
-  const landNodeIds = navApi.getLargestComponentNodeIds('LAND')
-  const plan = intentManager.getPlan()
-  const occupied = new Set<number>([
-    ...Object.values(plan.initialState.vehiclePositions),
-    ...Object.values(plan.initialState.cratePositions),
-  ])
-  const shuffled = [...landNodeIds].sort(() => Math.random() - 0.5)
-  for (const id of shuffled) {
-    if (!occupied.has(id)) return id
-  }
-  return shuffled[0]
-}
-
 function resetGameState(gameState: GameState): void {
   gameState.timecostBudget = 1000
   gameState.turnNumber = 0
@@ -55,6 +37,8 @@ export class GameFlowController {
   private readonly deps: GameFlowControllerDeps
   private readonly actor = createActor(gameFlowMachine)
   private isNewGame = false
+  private rng: SeededRng = new SeededRng(0)
+  private lastSeed: GameSeed = { value: 0 }
 
   constructor(deps: GameFlowControllerDeps) {
     this.deps = deps
@@ -85,13 +69,9 @@ export class GameFlowController {
             resetGameState(gameState)
           }
           app.hidePlanUI()
-          void this.runCardPickSequence(STARTING_CARD_KINDS).then(() => {
-            // Vehicles are now placed — generate fair crates based on their positions
-            addInitialCrates(
-              this.deps.intentManager.getPlan(),
-              this.deps.navApi,
-              this.deps.tileCentersApi,
-            )
+          void this.runCardPickSequence(STARTING_CARD_KINDS).then(async () => {
+            const spawned = this.spawnCrateBatch()
+            await app.runBatchCrateArrival(spawned)
             this.actor.send({ type: 'CARD_PICK_DONE' })
           })
           break
@@ -118,12 +98,8 @@ export class GameFlowController {
               return
             }
 
-            const countryNames = uniqueCountryNames(this.deps.tileCentersApi)
-            const newCrate = createRandomCrate(countryNames)
-            const tileId = pickUnoccupiedLandTile(this.deps.navApi, this.deps.intentManager)
-            const crateId = this.deps.intentManager.addGroundCrate(tileId, newCrate)
-
-            await app.runCrateArrivalAnimation(crateId, tileId)
+            const spawned = this.spawnCrateBatch()
+            await app.runBatchCrateArrival(spawned)
 
             this.actor.send({ type: 'ANIMATION_DONE', outcome: 'CONTINUE' })
           })
@@ -141,17 +117,30 @@ export class GameFlowController {
       }
     })
 
-    this.deps.mainMenuScreen.onStartGame = () => {
+    this.deps.mainMenuScreen.onStartGame = (seed: GameSeed) => {
+      this.lastSeed = seed
+      this.rng = new SeededRng(seed.value)
       this.isNewGame = true
       this.actor.send({ type: 'START_GAME' })
     }
 
     this.deps.gameOverScreen.onRestart = () => {
+      this.rng = new SeededRng(this.lastSeed.value)
       this.isNewGame = true
       this.actor.send({ type: 'RESTART' })
     }
 
     this.actor.start()
+  }
+
+  private spawnCrateBatch(): SpawnedCrate[] {
+    const spawner = new CrateSpawner({
+      navApi: this.deps.navApi,
+      tileCentersApi: this.deps.tileCentersApi,
+      intentManager: this.deps.intentManager,
+      rng: this.rng,
+    })
+    return spawner.spawnBatch()
   }
 
   private hideAllScreens(): void {

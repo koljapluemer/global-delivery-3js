@@ -20,6 +20,7 @@ interface CrateLabelData {
   worldPosition: THREE.Vector3
   destinationCountry: string
   rewardTimecost: number
+  remainingLifetime: number
   entityId: number
 }
 
@@ -33,6 +34,7 @@ interface VehicleLabelData {
 interface LabelEntry {
   el: HTMLDivElement
   textEl: HTMLSpanElement
+  lifetimeEl?: HTMLSpanElement
   menuPanel?: HTMLDivElement
   worldPos: THREE.Vector3
   smoothRot: number
@@ -44,6 +46,16 @@ interface RouteLegLabelEntry {
   el: HTMLDivElement
   worldPos: THREE.Vector3
   opacity: number
+}
+
+function lifetimeLabel(remaining: number): string {
+  return `⏳ ${remaining}`
+}
+
+function lifetimeColor(remaining: number): string {
+  if (remaining <= 1) return '#b91c1c'
+  if (remaining <= 2) return '#b45309'
+  return '#444'
 }
 
 /**
@@ -104,7 +116,7 @@ export class LabelRenderer {
     for (const item of data) {
       seen.add(item.entityId)
       if (!this.labels.has(item.entityId)) {
-        const { el, textEl, locateBtn } = this.createBubble(item.destinationCountry, item.rewardTimecost)
+        const { el, textEl, lifetimeEl, locateBtn } = this.createBubble(item.destinationCountry, item.rewardTimecost, item.remainingLifetime)
         if (animateInIds?.has(item.entityId)) {
           el.classList.add('crate-arrive')
         }
@@ -112,6 +124,7 @@ export class LabelRenderer {
         const entry: LabelEntry = {
           el,
           textEl,
+          lifetimeEl,
           worldPos: item.worldPosition.clone(),
           smoothRot: 0,
           destinationCountry: item.destinationCountry,
@@ -123,13 +136,21 @@ export class LabelRenderer {
         })
         locateBtn.addEventListener('click', (e) => {
           e.stopPropagation()
-          this.onLocateCountry?.(entry.destinationCountry!, entry.worldPos.clone())
+          if (entry.destinationCountry) {
+            this.onLocateCountry?.(entry.destinationCountry, entry.worldPos.clone())
+          }
         })
       } else {
-        const entry = this.labels.get(item.entityId)!
-        entry.worldPos.copy(item.worldPosition)
-        entry.destinationCountry = item.destinationCountry
-        entry.textEl.textContent = '→ ' + item.destinationCountry
+        const entry = this.labels.get(item.entityId)
+        if (entry) {
+          entry.worldPos.copy(item.worldPosition)
+          entry.destinationCountry = item.destinationCountry
+          entry.textEl.textContent = '→ ' + item.destinationCountry
+          if (entry.lifetimeEl) {
+            entry.lifetimeEl.textContent = lifetimeLabel(item.remainingLifetime)
+            entry.lifetimeEl.style.color = lifetimeColor(item.remainingLifetime)
+          }
+        }
       }
     }
     for (const [id, entry] of this.labels) {
@@ -153,6 +174,7 @@ export class LabelRenderer {
         worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
         destinationCountry: crate.destinationCountry,
         rewardTimecost: crate.rewardTimecost,
+        remainingLifetime: crate.remainingLifetime,
         entityId: id,
       })
     }
@@ -384,7 +406,7 @@ export class LabelRenderer {
     return panel
   }
 
-  private createBubble(destination: string, rewardTimecost: number): { el: HTMLDivElement; textEl: HTMLSpanElement; locateBtn: HTMLButtonElement } {
+  private createBubble(destination: string, rewardTimecost: number, remainingLifetime: number): { el: HTMLDivElement; textEl: HTMLSpanElement; lifetimeEl: HTMLSpanElement; locateBtn: HTMLButtonElement } {
     const el = document.createElement('div')
     Object.assign(el.style, {
       position: 'absolute',
@@ -444,9 +466,19 @@ export class LabelRenderer {
       lineHeight: '1',
     })
 
+    const lifetimeEl = document.createElement('span')
+    lifetimeEl.textContent = lifetimeLabel(remainingLifetime)
+    Object.assign(lifetimeEl.style, {
+      fontSize: '8px',
+      color: lifetimeColor(remainingLifetime),
+      textAlign: 'center',
+      lineHeight: '1',
+    })
+
     el.appendChild(textEl)
     el.appendChild(rewardEl)
-    return { el, textEl, locateBtn }
+    el.appendChild(lifetimeEl)
+    return { el, textEl, lifetimeEl, locateBtn }
   }
 
   private createVehicleBubble(vehicleName: string, hue: number): { el: HTMLDivElement; textEl: HTMLSpanElement; menuPanel: HTMLDivElement } {
