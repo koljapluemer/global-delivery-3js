@@ -31,4 +31,4 @@ export const CARD_DEFINITIONS: Record<CardKind, CardDefinition> = {
   },
 }
 
-export const STARTING_CARD_KINDS: CardKind[] = ['GET_BOAT', 'GET_CAR']
+export const STARTING_CARD_KINDS: CardKind[] = ['GET_BOAT', 'GET_CAR', 'GET_CAR']
