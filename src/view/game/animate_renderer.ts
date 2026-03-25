@@ -132,17 +132,16 @@ export class AnimateRenderer {
           slotIndex++
         } else {
           // Create the crate mesh for an already-loaded crate
-          const vehicleMesh = this.vehicleMeshes.get(vehicleId)
-          if (!vehicleMesh) continue
           const gltf = await this.loadGltf(crateUrl)
           const obj = gltf.scene.clone()
           cloneMaterials(obj)
           obj.scale.setScalar(CRATE_SCALE)
-          obj.position.set(0, CRATE_ON_VEHICLE_OFFSET * (slotIndex + 1), 0)
-          vehicleMesh.add(obj)
+          // Add to scene first so it has a valid world transform for attach() to work
+          this.scene.add(obj)
           this.objects.push(obj)
           this.crateMeshes.set(crateId, obj)
-          this.crateVehicle.set(crateId, vehicleId)
+          // attachCrateToVehicle handles scale compensation and slot positioning
+          this.attachCrateToVehicle(crateId, vehicleId, slotIndex)
           slotIndex++
         }
       }
@@ -180,11 +179,59 @@ export class AnimateRenderer {
     const vehicle = this.vehicleMeshes.get(vehicleId)
     if (!crate || !vehicle) return
     this.detachCrateFromVehicle(crateId)
-    vehicle.add(crate)
-    // Stack along local Z+ (outward from globe) on top of the vehicle
-    crate.position.set(0, CRATE_ON_VEHICLE_OFFSET * (slotIndex + 1), 0)
+    // attach() preserves world transform and compensates for vehicle scale (unlike add())
+    vehicle.attach(crate)
+    const slot = this.findCargoSlotObject(vehicle, slotIndex)
+    if (slot) {
+      const slotWorld = new THREE.Vector3()
+      slot.getWorldPosition(slotWorld)
+      crate.position.copy(vehicle.worldToLocal(slotWorld))
+    } else {
+      crate.position.set(0, CRATE_ON_VEHICLE_OFFSET * (slotIndex + 1), 0)
+    }
     crate.quaternion.identity()
     this.crateVehicle.set(crateId, vehicleId)
+  }
+
+  getCargoSlotWorldPosition(vehicleId: number, slotIndex: number): THREE.Vector3 | null {
+    const vehicle = this.vehicleMeshes.get(vehicleId)
+    if (!vehicle) return null
+    const slot = this.findCargoSlotObject(vehicle, slotIndex)
+    if (!slot) return null
+    const worldPos = new THREE.Vector3()
+    slot.getWorldPosition(worldPos)
+    return worldPos
+  }
+
+  getCrateWorldPosition(crateId: number): THREE.Vector3 | null {
+    const crate = this.crateMeshes.get(crateId)
+    if (!crate) return null
+    const worldPos = new THREE.Vector3()
+    crate.getWorldPosition(worldPos)
+    return worldPos
+  }
+
+  setCrateWorldPosition(crateId: number, worldPos: THREE.Vector3): void {
+    const crate = this.crateMeshes.get(crateId)
+    if (!crate) return
+    if (crate.parent && crate.parent !== this.scene) {
+      crate.position.copy(crate.parent.worldToLocal(worldPos.clone()))
+    } else {
+      crate.position.copy(worldPos)
+    }
+  }
+
+  orientCrateToTile(crateId: number, tileNormal: THREE.Vector3): void {
+    const crate = this.crateMeshes.get(crateId)
+    if (!crate) return
+    crate.quaternion.setFromUnitVectors(LOCAL_Y, tileNormal)
+  }
+
+  private findCargoSlotObject(vehicleMesh: THREE.Object3D, slotIndex: number): THREE.Object3D | null {
+    const name = `Cargo-${String(slotIndex).padStart(2, '0')}`
+    let found: THREE.Object3D | null = null
+    vehicleMesh.traverse((child) => { if (child.name === name) found = child })
+    return found
   }
 
   detachCrateFromVehicle(crateId: number): void {

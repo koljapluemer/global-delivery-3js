@@ -103,6 +103,24 @@ export class PlanAnimator {
     return pathTileIds.length - 1
   }
 
+  private async animateCrateToWorldPos(
+    crateId: number,
+    toWorldPos: THREE.Vector3,
+    animRenderer: AnimateRenderer,
+  ): Promise<void> {
+    const fromWorldPos = animRenderer.getCrateWorldPosition(crateId)
+    if (!fromWorldPos) return
+    const startTime = this.accumulatedDelta
+    const endTime = startTime + CARGO_ANIM_SECONDS
+    while (this.accumulatedDelta < endTime) {
+      const t = Math.min(1, (this.accumulatedDelta - startTime) / CARGO_ANIM_SECONDS)
+      const easedT = t * t * (3 - 2 * t)
+      animRenderer.setCrateWorldPosition(crateId, fromWorldPos.clone().lerp(toWorldPos, easedT))
+      await this.waitSeconds(0)
+    }
+    animRenderer.setCrateWorldPosition(crateId, toWorldPos)
+  }
+
   async run(opts: PlanAnimatorRunOptions): Promise<LevelStats> {
     const { plan, derived, tileApi, globeCenter, animRenderer, onTrackTile } = opts
 
@@ -144,29 +162,50 @@ export class PlanAnimator {
         }
         const { intent } = cargoStep.action
 
-        await this.waitSeconds(CARGO_ANIM_SECONDS)
-
         switch (intent.kind) {
           case 'LOAD': {
             const slot = vehicleSlots.get(intent.vehicleId) ?? 0
+            const targetWorldPos = animRenderer.getCargoSlotWorldPosition(intent.vehicleId, slot)
+            if (targetWorldPos) {
+              await this.animateCrateToWorldPos(intent.crateId, targetWorldPos, animRenderer)
+            } else {
+              await this.waitSeconds(CARGO_ANIM_SECONDS)
+            }
             animRenderer.attachCrateToVehicle(intent.crateId, intent.vehicleId, slot)
             vehicleSlots.set(intent.vehicleId, slot + 1)
             break
           }
           case 'UNLOAD': {
-            animRenderer.placeCrate(intent.crateId, intent.toTileId, tileApi, globeCenter)
             const slot = vehicleSlots.get(intent.vehicleId) ?? 1
+            animRenderer.detachCrateFromVehicle(intent.crateId)
+            const tile = tileApi.getTileById(intent.toTileId)
+            if (tile) {
+              const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
+              const tileNormal = tilePos.clone().sub(globeCenter).normalize()
+              await this.animateCrateToWorldPos(intent.crateId, tilePos, animRenderer)
+              animRenderer.orientCrateToTile(intent.crateId, tileNormal)
+            } else {
+              await this.waitSeconds(CARGO_ANIM_SECONDS)
+            }
             vehicleSlots.set(intent.vehicleId, Math.max(0, slot - 1))
             break
           }
           case 'DELIVER': {
+            const slot = vehicleSlots.get(intent.vehicleId) ?? 1
             const crate = plan.crates[intent.crateId]
+            animRenderer.detachCrateFromVehicle(intent.crateId)
+            const tile = tileApi.getTileById(intent.toTileId)
+            if (tile) {
+              const tilePos = new THREE.Vector3(tile.x, tile.z, -tile.y)
+              await this.animateCrateToWorldPos(intent.crateId, tilePos, animRenderer)
+            } else {
+              await this.waitSeconds(CARGO_ANIM_SECONDS)
+            }
             if (crate) {
               stats.timecostEarned += crate.rewardTimecost
               stats.cratesDelivered++
             }
             animRenderer.destroyCrate(intent.crateId)
-            const slot = vehicleSlots.get(intent.vehicleId) ?? 1
             vehicleSlots.set(intent.vehicleId, Math.max(0, slot - 1))
             break
           }
