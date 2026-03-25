@@ -110,7 +110,7 @@ export class MainMenuScreen {
     const btn = document.createElement('button')
     Object.assign(btn.style, SECONDARY_BUTTON_STYLE)
     btn.textContent = 'Daily Challenge'
-    btn.addEventListener('click', () => this.onStartGame?.({ value: dailySeed() }))
+    btn.addEventListener('click', () => this.onStartGame?.({ value: dailySeed(), autoPlace: true }))
     btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.15)' })
     btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.08)' })
     return btn

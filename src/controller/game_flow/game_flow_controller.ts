@@ -15,6 +15,7 @@ import type { PlannedCrate } from '../crate_spawner'
 import { emptyPlan } from '../../model/world_generator'
 import { SeededRng } from '../../util/seeded_rng'
 import { CrateSpawner } from '../crate_spawner'
+import { AvailableVehicleTypes } from '../../model/db/vehicles'
 
 export interface GameFlowControllerDeps {
   app: App
@@ -39,6 +40,7 @@ export class GameFlowController {
   private isNewGame = false
   private rng: SeededRng = new SeededRng(0)
   private lastSeed: GameSeed = { value: 0 }
+  private autoPlace = false
 
   constructor(deps: GameFlowControllerDeps) {
     this.deps = deps
@@ -120,12 +122,14 @@ export class GameFlowController {
     this.deps.mainMenuScreen.onStartGame = (seed: GameSeed) => {
       this.lastSeed = seed
       this.rng = new SeededRng(seed.value)
+      this.autoPlace = seed.autoPlace ?? false
       this.isNewGame = true
       this.actor.send({ type: 'START_GAME' })
     }
 
     this.deps.gameOverScreen.onRestart = () => {
       this.rng = new SeededRng(this.lastSeed.value)
+      this.autoPlace = this.lastSeed.autoPlace ?? false
       this.isNewGame = true
       this.actor.send({ type: 'RESTART' })
     }
@@ -150,6 +154,10 @@ export class GameFlowController {
   }
 
   private async runCardPickSequence(kinds: CardKind[]): Promise<void> {
+    if (this.autoPlace) {
+      for (const kind of kinds) await this.executeCard(kind)
+      return
+    }
     const remaining = [...kinds]
     while (remaining.length > 0) {
       const picked = await new Promise<CardKind>((resolve) => {
@@ -168,13 +176,39 @@ export class GameFlowController {
   private async executeCard(kind: CardKind): Promise<void> {
     switch (kind) {
       case 'GET_CAR':
-        await this.deps.app.enterVehiclePlacementMode('basic_car')
+        if (this.autoPlace) this.autoPlaceVehicle('basic_car')
+        else await this.deps.app.enterVehiclePlacementMode('basic_car')
         break
       case 'GET_BOAT':
-        await this.deps.app.enterVehiclePlacementMode('small_boat')
+        if (this.autoPlace) this.autoPlaceVehicle('small_boat')
+        else await this.deps.app.enterVehiclePlacementMode('small_boat')
         break
       default:
         break
     }
+  }
+
+  private autoPlaceVehicle(vehicleTypeId: string): void {
+    const { app, intentManager, navApi } = this.deps
+    const vehicleType = AvailableVehicleTypes[vehicleTypeId]
+    if (!vehicleType) return
+
+    const occupied = app.getDerived().occupiedTiles
+    const candidates = navApi.getLargestComponentNodeIds(vehicleType.navMesh)
+      .filter((id) => !occupied.has(id))
+    if (candidates.length === 0) return
+
+    const tileId = candidates[this.rng.nextInt(candidates.length)]
+    const hue = this.rng.nextInt(360)
+    const vehicleNumber = Object.keys(intentManager.getPlan().vehicles).length + 1
+    const name = `${vehicleTypeId === 'basic_car' ? 'Car' : 'Boat'} ${vehicleNumber}`
+
+    intentManager.addVehicle(tileId, {
+      name,
+      hue,
+      vehicleType,
+      movementCost: vehicleType.baseMovementCost,
+      capacity: vehicleType.baseCapacity,
+    })
   }
 }
