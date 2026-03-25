@@ -11,6 +11,7 @@ import type { CrateLoadMenu } from '../view/ui/overlay/crate_load_menu'
 import type { PinPlacementPreview } from '../view/game/pin_placement_preview'
 import type { CrateDropPreview } from '../view/game/crate_drop_preview'
 import type { CrateLoadPreview } from '../view/game/crate_load_preview'
+import type { VehiclePlacementPreview } from '../view/game/vehicle_placement_preview'
 import type { LabelRenderer } from '../view/game/label_renderer'
 import type { GameItemRenderer } from '../view/game/game_item_renderer'
 import type { Actor } from 'xstate'
@@ -32,6 +33,8 @@ export interface CanvasInputControllerDeps {
   pinPlacementPreview: PinPlacementPreview | null
   crateDropPreview: CrateDropPreview | null
   crateLoadPreview: CrateLoadPreview | null
+  vehiclePlacementPreview: VehiclePlacementPreview | null
+  getOnVehicleTilePlaced: () => ((tileId: number) => void) | null
   rerender: () => Promise<void>
 }
 
@@ -129,6 +132,7 @@ export class CanvasInputController {
       pinPlacementPreview,
       crateDropPreview,
       crateLoadPreview,
+      vehiclePlacementPreview,
       rerender,
     } = this.deps
     const snapshot = inputModeActor.getSnapshot()
@@ -199,6 +203,16 @@ export class CanvasInputController {
         await rerender()
       }
       inputModeActor.send({ type: 'CONFIRM_CRATE_LOAD' })
+      this.pointerDownHit = null
+      return
+    }
+
+    if (state === 'vehiclePlacement') {
+      if (lastHoveredTile) {
+        vehiclePlacementPreview?.hide()
+        this.deps.getOnVehicleTilePlaced()?.(lastHoveredTile.tile_id)
+        inputModeActor.send({ type: 'CONFIRM_VEHICLE_PLACEMENT', tileId: lastHoveredTile.tile_id })
+      }
       this.pointerDownHit = null
       return
     }

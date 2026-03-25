@@ -1,9 +1,7 @@
-import { AvailableVehicleTypes } from './db/vehicles'
 import type { TileCentersApi } from '../controller/layer_0/tile_centers_api'
 import type { NavApi } from '../controller/navigation'
 import type { Plan } from './types/Plan'
 import type { Crate } from './types/Crate'
-import type { Vehicle } from './types/Vehicle'
 import { computeFairTileSet } from '../controller/fair_tiles'
 
 function pickRandom<T>(arr: readonly T[]): T {
@@ -21,73 +19,44 @@ export function createRandomCrate(countryNames: string[]): Crate {
   return { destinationCountry, rewardTimecost }
 }
 
-export function generateWorld(tileCentersApi: TileCentersApi, navApi: NavApi): Plan {
-  const landNodeIds = navApi.getLargestComponentNodeIds('LAND')
-  const waterNodeIds = navApi.getLargestComponentNodeIds('WATER')
-
-  const carType = AvailableVehicleTypes['basic_car']
-  const boatType = AvailableVehicleTypes['small_boat']
-
-  const carTileId = pickRandom(landNodeIds)
-  const carTileId2 = pickRandom(landNodeIds)
-  const boatTileId = pickRandom(waterNodeIds)
-
-  const vehicles: Record<number, Vehicle> = {
-    0: {
-      name: 'Cabriolet',
-      vehicleType: carType,
-      hue: 70,
-      movementCost: carType.baseMovementCost,
-      capacity: carType.baseCapacity,
-    },
-    2: {
-      name: 'Jeep',
-      vehicleType: carType,
-      hue: 130,
-      movementCost: carType.baseMovementCost,
-      capacity: carType.baseCapacity,
-    },
-    1: {
-      name: 'Boat',
-      vehicleType: boatType,
-      hue: 200,
-      movementCost: boatType.baseMovementCost,
-      capacity: boatType.baseCapacity,
-    },
-  }
-
-  const tempPlan: Plan = {
-    vehicles,
+export function emptyPlan(): Plan {
+  return {
+    vehicles: {},
     crates: {},
-    initialState: { vehiclePositions: { 0: carTileId, 1: boatTileId, 2: carTileId2 }, cratePositions: {} },
+    initialState: { vehiclePositions: {}, cratePositions: {} },
     steps: [],
   }
-  const fairTileSet = computeFairTileSet(tempPlan, navApi, tileCentersApi)
+}
+
+/**
+ * Populates the plan with 6 initial crates placed on fair tiles derived from the
+ * vehicles already in the plan. Must be called AFTER vehicles have been placed.
+ */
+export function addInitialCrates(plan: Plan, navApi: NavApi, tileCentersApi: TileCentersApi): void {
+  const fairTileSet = computeFairTileSet(plan, navApi, tileCentersApi)
   const fairLandTiles = [...fairTileSet.tileIds]
   const fairCountries = [...fairTileSet.countryNames]
 
-  const usedTiles = new Set<number>([carTileId, carTileId2, boatTileId])
+  const occupied = new Set<number>([
+    ...Object.values(plan.initialState.vehiclePositions),
+    ...Object.values(plan.initialState.cratePositions),
+  ])
+
   const crateTileIds: number[] = []
   while (crateTileIds.length < 6) {
     const tileId = pickRandom(fairLandTiles)
-    if (!usedTiles.has(tileId)) {
+    if (!occupied.has(tileId)) {
       crateTileIds.push(tileId)
-      usedTiles.add(tileId)
+      occupied.add(tileId)
     }
   }
 
-  const crates: Record<number, Crate> = {}
-  for (let i = 0; i < 6; i++) {
-    crates[i] = createRandomCrate(fairCountries)
-  }
+  const startId = Object.keys(plan.crates).length > 0
+    ? Math.max(...Object.keys(plan.crates).map(Number)) + 1
+    : 0
 
-  return {
-    vehicles,
-    crates,
-    initialState: {
-      vehiclePositions: { 0: carTileId, 1: boatTileId, 2: carTileId2 },
-      cratePositions: Object.fromEntries(crateTileIds.map((id, i) => [i, id])),
-    },
-    steps: [],
+  for (let i = 0; i < 6; i++) {
+    plan.crates[startId + i] = createRandomCrate(fairCountries)
+    plan.initialState.cratePositions[startId + i] = crateTileIds[i]
   }
 }

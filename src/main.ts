@@ -3,7 +3,6 @@ import { GlobeScene } from './view/game/globe_scene'
 import { MainCamera } from './view/camera/main_camera'
 import { TileCentersApi } from './controller/layer_0/tile_centers_api'
 import { NavApi } from './controller/navigation'
-import { generateWorld } from './model/world_generator'
 import { PlanIntentManager } from './controller/plan_intent_manager'
 import { createActor } from 'xstate'
 import { inputModeMachine } from './controller/input_mode/input_mode_machine'
@@ -11,9 +10,11 @@ import { GameItemRenderer } from './view/game/game_item_renderer'
 import { PlanPanel } from './view/ui/plan_panel/plan_panel'
 import { CancelButton } from './view/ui/overlay/cancel_button'
 import { CrateLoadMenu } from './view/ui/overlay/crate_load_menu'
+import { VehicleSetupPopup } from './view/ui/overlay/vehicle_setup_popup'
 import { App } from './app/App'
 import { MainMenuScreen } from './view/ui/screens/main_menu_screen'
 import { GameOverScreen } from './view/ui/screens/game_over_screen'
+import { CardPickScreen } from './view/ui/screens/card_pick_screen'
 import { GameFlowController } from './controller/game_flow/game_flow_controller'
 import type { GameState } from './model/types/GameState'
 
@@ -28,7 +29,12 @@ const navApi = new NavApi()
 tileCentersApi.load()
 navApi.load()
 
-const intentManager = new PlanIntentManager(generateWorld(tileCentersApi, navApi))
+const intentManager = new PlanIntentManager({
+  vehicles: {},
+  crates: {},
+  initialState: { vehiclePositions: {}, cratePositions: {} },
+  steps: [],
+})
 const inputModeActor = createActor(inputModeMachine).start()
 const gameItemRenderer = new GameItemRenderer(globeScene.scene, navApi, renderer)
 
@@ -43,6 +49,10 @@ const mainMenuScreen = new MainMenuScreen()
 mainMenuScreen.mount(document.body)
 const gameOverScreen = new GameOverScreen()
 gameOverScreen.mount(document.body)
+const cardPickScreen = new CardPickScreen()
+cardPickScreen.mount(document.body)
+const vehicleSetupPopup = new VehicleSetupPopup()
+vehicleSetupPopup.mount(document.body)
 
 const gameState: GameState = {
   timecostBudget: 1000,
@@ -63,6 +73,7 @@ const app = new App({
   cancelButton,
   crateLoadMenu,
   gameState,
+  vehicleSetupPopup,
 })
 
 const flowController = new GameFlowController({
@@ -70,6 +81,7 @@ const flowController = new GameFlowController({
   gameState,
   mainMenuScreen,
   gameOverScreen,
+  cardPickScreen,
   intentManager,
   tileCentersApi,
   navApi,

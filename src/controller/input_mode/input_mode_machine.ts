@@ -10,6 +10,7 @@ export interface InputModeContext {
   toTileId?: number
   insertAfterStepIndex?: number
   prevTileId?: number
+  vehicleTypeId?: string
   lastValidLoadTarget: { vehicleId: number; insertAfterStepIndex: number } | null
   lastValidUnloadTarget: { toTileId: number; isDelivery: boolean; insertAfterStepIndex: number } | null
 }
@@ -32,6 +33,8 @@ export type InputModeEvent =
     }
   | { type: 'CONFIRM_PIN_PLACEMENT'; vehicleId: number; fromTileId: number }
   | { type: 'ENTER_PIN_PLACEMENT'; vehicleId: number; fromTileId: number; insertAfterStepIndex?: number }
+  | { type: 'ENTER_VEHICLE_PLACEMENT'; vehicleTypeId: string }
+  | { type: 'CONFIRM_VEHICLE_PLACEMENT'; tileId: number }
   | { type: 'ENTER_CRATE_DROP'; vehicleId: number; stepIndex: number; crateId: number }
   | { type: 'ENTER_CRATE_LOAD'; crateId: number; stepIndex: number; crateTileId: number }
   | { type: 'UPDATE_LOAD_TARGET'; payload: { vehicleId: number; insertAfterStepIndex: number } | null }
@@ -52,6 +55,7 @@ export type InputModeState =
   | { value: 'routeSplit'; context: InputModeContext }
   | { value: 'crateDrop'; context: InputModeContext }
   | { value: 'crateLoad'; context: InputModeContext }
+  | { value: 'vehiclePlacement'; context: InputModeContext }
 
 export const inputModeMachine = createMachine({
   id: 'inputMode',
@@ -109,6 +113,12 @@ export const inputModeMachine = createMachine({
             crateTileId: ({ event }) => event.crateTileId,
           }),
         },
+        ENTER_VEHICLE_PLACEMENT: {
+          target: 'vehiclePlacement',
+          actions: assign({
+            vehicleTypeId: ({ event }) => ('vehicleTypeId' in event ? event.vehicleTypeId : undefined),
+          }),
+        },
         SELECT_VEHICLE: undefined,
         OPEN_CRATE_LOAD_MENU: undefined,
         REMOVE_INVALID_INTENT: undefined,
@@ -149,6 +159,12 @@ export const inputModeMachine = createMachine({
         UPDATE_LOAD_TARGET: {
           actions: assign({ lastValidLoadTarget: ({ event }) => ('payload' in event ? event.payload : null) }),
         },
+      },
+    },
+    vehiclePlacement: {
+      on: {
+        CANCEL: 'normal',
+        CONFIRM_VEHICLE_PLACEMENT: 'normal',
       },
     },
   },

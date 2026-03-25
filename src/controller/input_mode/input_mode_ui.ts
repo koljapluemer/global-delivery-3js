@@ -6,6 +6,7 @@ import type { CrateDropPreview } from '../../view/game/crate_drop_preview'
 import type { CrateLoadPreview } from '../../view/game/crate_load_preview'
 import type { CrateLoadMenu } from '../../view/ui/overlay/crate_load_menu'
 import type { GameItemRenderer } from '../../view/game/game_item_renderer'
+import type { VehiclePlacementPreview } from '../../view/game/vehicle_placement_preview'
 
 export interface InputModeUIDeps {
   inputModeActor: Actor<typeof import('./input_mode_machine').inputModeMachine>
@@ -14,6 +15,7 @@ export interface InputModeUIDeps {
   pinPlacementPreview: PinPlacementPreview | null
   crateDropPreview: CrateDropPreview | null
   crateLoadPreview: CrateLoadPreview | null
+  vehiclePlacementPreview: VehiclePlacementPreview | null
   closeActiveMenu: () => void
   crateLoadMenu: CrateLoadMenu
   gameItemRenderer: GameItemRenderer
@@ -27,6 +29,7 @@ export function subscribeInputModeUI(deps: InputModeUIDeps): void {
     pinPlacementPreview,
     crateDropPreview,
     crateLoadPreview,
+    vehiclePlacementPreview,
     closeActiveMenu,
     crateLoadMenu,
     gameItemRenderer,
@@ -39,10 +42,11 @@ export function subscribeInputModeUI(deps: InputModeUIDeps): void {
     const isCrateLoad = state === 'crateLoad'
     const isPinDrag = state === 'pinDrag'
     const isRouteSplit = state === 'routeSplit'
-    const needsCancel = isPinPlacement || isCrateDrop || isCrateLoad
+    const isVehiclePlacement = state === 'vehiclePlacement'
+    const needsCancel = isPinPlacement || isCrateDrop || isCrateLoad || isVehiclePlacement
     cancelButton[needsCancel ? 'show' : 'hide']()
     domElement.style.cursor =
-      isPinPlacement || isCrateDrop || isCrateLoad
+      isPinPlacement || isCrateDrop || isCrateLoad || isVehiclePlacement
         ? 'crosshair'
         : isPinDrag || isRouteSplit
           ? 'grabbing'
@@ -51,6 +55,7 @@ export function subscribeInputModeUI(deps: InputModeUIDeps): void {
       pinPlacementPreview?.hide()
       crateDropPreview?.hide()
       crateLoadPreview?.hide()
+      vehiclePlacementPreview?.hide()
       closeActiveMenu()
       crateLoadMenu.hide()
     }

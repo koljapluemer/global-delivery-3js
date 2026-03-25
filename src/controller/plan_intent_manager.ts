@@ -1,5 +1,6 @@
 import type { Plan, PlanStep, JourneyStep, JourneyIntent, CargoStep, CargoIntent } from '../model/types/Plan'
 import type { Crate } from '../model/types/Crate'
+import type { Vehicle } from '../model/types/Vehicle'
 
 export class PlanIntentManager {
   private plan: Plan
@@ -10,6 +11,15 @@ export class PlanIntentManager {
   resetPlan(plan: Plan): void {
     this.plan = plan
     this.pruneAndMerge()
+  }
+
+  /** Add a new vehicle at tileId. Returns the new vehicleId. */
+  addVehicle(tileId: number, vehicle: Vehicle): number {
+    const ids = Object.keys(this.plan.vehicles).map(Number)
+    const newId = ids.length > 0 ? Math.max(...ids) + 1 : 0
+    this.plan.vehicles[newId] = vehicle
+    this.plan.initialState.vehiclePositions[newId] = tileId
+    return newId
   }
 
   /** Add a new crate on the ground at tileId. Returns the new crateId. */

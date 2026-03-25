@@ -51,6 +51,11 @@ export class NavApi {
     return largest.node_ids
   }
 
+  /** Returns true if the tile is a node in the given nav mesh. */
+  isTileOnNavMesh(tileId: number, navMesh: NavMesh): boolean {
+    return this.maps.get(navMesh)?.has(tileId) ?? false
+  }
+
   /** Returns the node IDs of the component containing tileId in the given navmesh, or null if not found. */
   getComponentNodeIds(tileId: number, navMesh: NavMesh): number[] | null {
     const components = this.componentsByMesh.get(navMesh) ?? []

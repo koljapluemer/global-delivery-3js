@@ -19,6 +19,7 @@ import { SceneInteractionManager } from '../controller/scene_interaction_manager
 import { createTileHoverHandler } from '../controller/tile_hover_controller'
 import { wirePanelCallbacks } from './panel_wiring'
 import { subscribeInputModeUI } from '../controller/input_mode/input_mode_ui'
+import { inputStateValue } from '../controller/input_mode/input_mode_machine'
 import { CanvasInputController } from '../controller/canvas_input_controller'
 import type { DerivedPlanState } from '../model/types/DerivedPlanState'
 import type { DerivedCargoStep } from '../model/types/DerivedPlanState'
@@ -34,6 +35,9 @@ import { PlanAnimator } from '../controller/animate_mode/plan_animator'
 import { CrateArrivalAnimator } from '../controller/animate_mode/crate_arrival_animator'
 import { CountryHighlightRenderer } from '../view/game/country_highlight_renderer'
 import { FairTileHighlightRenderer } from '../view/game/fair_tile_highlight_renderer'
+import { VehiclePlacementPreview } from '../view/game/vehicle_placement_preview'
+import { AvailableVehicleTypes } from '../model/db/vehicles'
+import type { VehicleSetupPopup } from '../view/ui/overlay/vehicle_setup_popup'
 
 export interface AppDeps {
   renderer: THREE.WebGLRenderer
@@ -48,6 +52,7 @@ export interface AppDeps {
   cancelButton: CancelButton
   crateLoadMenu: CrateLoadMenu
   gameState: GameState
+  vehicleSetupPopup: VehicleSetupPopup
 }
 
 export class App {
@@ -60,6 +65,8 @@ export class App {
   private pinPlacementPreview: PinPlacementPreview | null = null
   private crateDropPreview: CrateDropPreview | null = null
   private crateLoadPreview: CrateLoadPreview | null = null
+  private vehiclePlacementPreview: VehiclePlacementPreview | null = null
+  private onVehicleTilePlaced: ((tileId: number) => void) | null = null
   private sceneInteractionManager: SceneInteractionManager | null = null
   private canvasInputController: CanvasInputController | null = null
   private frameCallback: ((delta: number) => void) | null = null
@@ -138,6 +145,7 @@ export class App {
     this.pinPlacementPreview = new PinPlacementPreview(globeScene.scene, navApi)
     this.crateDropPreview = new CrateDropPreview(globeScene.scene)
     this.crateLoadPreview = new CrateLoadPreview(globeScene.scene)
+    this.vehiclePlacementPreview = new VehiclePlacementPreview(globeScene.scene)
     this.countryHighlightRenderer = new CountryHighlightRenderer(globeScene.scene, boundingSphere.center)
     this.fairTileHighlightRenderer = new FairTileHighlightRenderer(globeScene.scene, boundingSphere.center)
 
@@ -157,9 +165,11 @@ export class App {
       getPlan: () => intentManager.getPlan(),
       getGlobeCenter: () => this.globeCenter,
       tileCentersApi,
+      navApi,
       pinPlacementPreview: this.pinPlacementPreview,
       crateDropPreview: this.crateDropPreview,
       crateLoadPreview: this.crateLoadPreview,
+      vehiclePlacementPreview: this.vehiclePlacementPreview,
     })
 
     gameItemRenderer
@@ -260,6 +270,7 @@ export class App {
           pinPlacementPreview: this.pinPlacementPreview,
           crateDropPreview: this.crateDropPreview,
           crateLoadPreview: this.crateLoadPreview,
+          vehiclePlacementPreview: this.vehiclePlacementPreview,
           closeActiveMenu: () => this.labelRenderer?.closeActiveMenu(),
           crateLoadMenu,
           gameItemRenderer,
@@ -280,6 +291,8 @@ export class App {
           pinPlacementPreview: this.pinPlacementPreview,
           crateDropPreview: this.crateDropPreview,
           crateLoadPreview: this.crateLoadPreview,
+          vehiclePlacementPreview: this.vehiclePlacementPreview,
+          getOnVehicleTilePlaced: () => this.onVehicleTilePlaced,
           rerender: () => this.rerender(),
         })
         this.canvasInputController.setup()
@@ -301,6 +314,51 @@ export class App {
 
   showPlanUI(): void {
     this.deps.planPanel.show()
+  }
+
+  async enterVehiclePlacementMode(vehicleTypeId: string): Promise<boolean> {
+    const { inputModeActor, intentManager, vehicleSetupPopup } = this.deps
+
+    const tileId = await new Promise<number | null>((resolve) => {
+      this.onVehicleTilePlaced = (id: number) => {
+        this.onVehicleTilePlaced = null
+        resolve(id)
+      }
+
+      inputModeActor.send({ type: 'ENTER_VEHICLE_PLACEMENT', vehicleTypeId })
+
+      // Watch for cancel: machine returns to normal without the tile callback being called
+      const sub = inputModeActor.subscribe((snapshot) => {
+        if (inputStateValue(snapshot) === 'normal') {
+          sub.unsubscribe()
+          if (this.onVehicleTilePlaced !== null) {
+            this.onVehicleTilePlaced = null
+            resolve(null)
+          }
+        }
+      })
+    })
+
+    if (tileId === null) return false
+
+    this.vehiclePlacementPreview?.hide()
+
+    const result = await vehicleSetupPopup.show()
+    if (result === null) return false
+
+    const vehicleType = AvailableVehicleTypes[vehicleTypeId]
+    if (!vehicleType) return false
+
+    intentManager.addVehicle(tileId, {
+      name: result.name,
+      hue: result.hue,
+      vehicleType,
+      movementCost: vehicleType.baseMovementCost,
+      capacity: vehicleType.baseCapacity,
+    })
+
+    await this.rerender()
+    return true
   }
 
   async runCrateArrivalAnimation(crateId: number, tileId: number): Promise<void> {

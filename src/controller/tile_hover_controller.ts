@@ -1,13 +1,16 @@
 import { findFirstValidInsertionPoint } from './plan_deriver'
 import { inputStateValue } from './input_mode/input_mode_machine'
 import { hsvColor } from '../view/game/color_utils'
+import { AvailableVehicleTypes } from '../model/db/vehicles'
 import type { TileCenter } from './layer_0/tile_centers_api'
 import type { DerivedPlanState } from '../model/types/DerivedPlanState'
 import type { Plan } from '../model/types/Plan'
 import type { PinPlacementPreview } from '../view/game/pin_placement_preview'
 import type { CrateDropPreview } from '../view/game/crate_drop_preview'
 import type { CrateLoadPreview } from '../view/game/crate_load_preview'
+import type { VehiclePlacementPreview } from '../view/game/vehicle_placement_preview'
 import type { TileCentersApi } from './layer_0/tile_centers_api'
+import type { NavApi } from './navigation'
 import type { Actor } from 'xstate'
 import type { GlobePointer } from './globe_pointer'
 
@@ -18,9 +21,11 @@ export interface TileHoverControllerDeps {
   getPlan: () => Plan
   getGlobeCenter: () => import('three').Vector3
   tileCentersApi: TileCentersApi
+  navApi: NavApi
   pinPlacementPreview: PinPlacementPreview | null
   crateDropPreview: CrateDropPreview | null
   crateLoadPreview: CrateLoadPreview | null
+  vehiclePlacementPreview: VehiclePlacementPreview | null
 }
 
 /** Build the pointer.onHover callback for tile-based preview updates. */
@@ -77,8 +82,18 @@ export function createTileHoverHandler(
     deps.crateDropPreview?.hide()
     if (state === 'crateLoad') return
 
+    if (state === 'vehiclePlacement') {
+      const vehicleType = AvailableVehicleTypes[ctx.vehicleTypeId ?? '']
+      if (!vehicleType || !deps.vehiclePlacementPreview) return
+      const derived = deps.getDerived()
+      const isValid = deps.navApi.isTileOnNavMesh(tile.tile_id, vehicleType.navMesh)
+        && !derived.occupiedTiles.has(tile.tile_id)
+      void deps.vehiclePlacementPreview.update(tile, vehicleType, deps.getGlobeCenter(), isValid)
+      return
+    }
+
     const plan = deps.getPlan()
-    const vehicle = plan.vehicles[ctx.vehicleId!]
+    const vehicle = plan.vehicles[ctx.vehicleId ?? -1]
     if (!vehicle || !deps.pinPlacementPreview) return
 
     const fromTileId =

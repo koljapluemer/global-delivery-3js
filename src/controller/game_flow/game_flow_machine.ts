@@ -3,6 +3,7 @@ import { createMachine } from 'xstate'
 
 export type GameFlowEvent =
   | { type: 'START_GAME' }
+  | { type: 'CARD_PICK_DONE' }
   | { type: 'CONFIRM_PLAN' }
   | { type: 'ANIMATION_DONE'; outcome: 'CONTINUE' | 'GAME_OVER' }
   | { type: 'RESTART' }
@@ -15,7 +16,12 @@ export const gameFlowMachine = createMachine(
     states: {
       MAIN_MENU: {
         on: {
-          START_GAME: 'PLAN',
+          START_GAME: 'CARD_PICK',
+        },
+      },
+      CARD_PICK: {
+        on: {
+          CARD_PICK_DONE: 'PLAN',
         },
       },
       PLAN: {
@@ -38,7 +44,7 @@ export const gameFlowMachine = createMachine(
       },
       GAME_OVER: {
         on: {
-          RESTART: 'PLAN',
+          RESTART: 'CARD_PICK',
         },
       },
     },
