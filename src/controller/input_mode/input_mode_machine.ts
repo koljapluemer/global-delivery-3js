@@ -163,7 +163,6 @@ export const inputModeMachine = createMachine({
     },
     vehiclePlacement: {
       on: {
-        CANCEL: 'normal',
         CONFIRM_VEHICLE_PLACEMENT: 'normal',
       },
     },

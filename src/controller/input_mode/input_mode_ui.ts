@@ -43,7 +43,7 @@ export function subscribeInputModeUI(deps: InputModeUIDeps): void {
     const isPinDrag = state === 'pinDrag'
     const isRouteSplit = state === 'routeSplit'
     const isVehiclePlacement = state === 'vehiclePlacement'
-    const needsCancel = isPinPlacement || isCrateDrop || isCrateLoad || isVehiclePlacement
+    const needsCancel = isPinPlacement || isCrateDrop || isCrateLoad
     cancelButton[needsCancel ? 'show' : 'hide']()
     domElement.style.cursor =
       isPinPlacement || isCrateDrop || isCrateLoad || isVehiclePlacement

@@ -28,6 +28,15 @@ export interface TileHoverControllerDeps {
   vehiclePlacementPreview: VehiclePlacementPreview | null
 }
 
+export function isVehicleTileValid(
+  tileId: number,
+  navMesh: 'LAND' | 'WATER' | 'ALL',
+  navApi: NavApi,
+  occupiedTiles: ReadonlySet<number>,
+): boolean {
+  return navApi.isTileOnNavMesh(tileId, navMesh) && !occupiedTiles.has(tileId)
+}
+
 /** Build the pointer.onHover callback for tile-based preview updates. */
 export function createTileHoverHandler(
   deps: TileHoverControllerDeps,
@@ -86,8 +95,7 @@ export function createTileHoverHandler(
       const vehicleType = AvailableVehicleTypes[ctx.vehicleTypeId ?? '']
       if (!vehicleType || !deps.vehiclePlacementPreview) return
       const derived = deps.getDerived()
-      const isValid = deps.navApi.isTileOnNavMesh(tile.tile_id, vehicleType.navMesh)
-        && !derived.occupiedTiles.has(tile.tile_id)
+      const isValid = isVehicleTileValid(tile.tile_id, vehicleType.navMesh, deps.navApi, derived.occupiedTiles)
       void deps.vehiclePlacementPreview.update(tile, vehicleType, deps.getGlobeCenter(), isValid)
       return
     }

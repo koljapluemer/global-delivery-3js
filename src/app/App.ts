@@ -17,6 +17,7 @@ import { CancelButton } from '../view/ui/overlay/cancel_button'
 import { CrateLoadMenu } from '../view/ui/overlay/crate_load_menu'
 import { SceneInteractionManager } from '../controller/scene_interaction_manager'
 import { createTileHoverHandler } from '../controller/tile_hover_controller'
+import { wrapWithHoverLogger } from '../view/debug/log_hovered_tile'
 import { wirePanelCallbacks } from './panel_wiring'
 import { subscribeInputModeUI } from '../controller/input_mode/input_mode_ui'
 import { inputStateValue } from '../controller/input_mode/input_mode_machine'
@@ -155,7 +156,7 @@ export class App {
       tileCentersApi,
       boundingSphere,
     )
-    pointer.onHover = createTileHoverHandler({
+    pointer.onHover = wrapWithHoverLogger(createTileHoverHandler({
       setLastHoveredTile: (tile) => {
         this.lastHoveredTile = tile
         this.deps.planPanel.updateHoveredCountry(tile?.country_name ?? null)
@@ -170,7 +171,7 @@ export class App {
       crateDropPreview: this.crateDropPreview,
       crateLoadPreview: this.crateLoadPreview,
       vehiclePlacementPreview: this.vehiclePlacementPreview,
-    })
+    }))
 
     gameItemRenderer
       .render(intentManager.getPlan(), this.derived, tileCentersApi, this.globeCenter)
@@ -293,6 +294,7 @@ export class App {
           crateLoadPreview: this.crateLoadPreview,
           vehiclePlacementPreview: this.vehiclePlacementPreview,
           getOnVehicleTilePlaced: () => this.onVehicleTilePlaced,
+          navApi,
           rerender: () => this.rerender(),
         })
         this.canvasInputController.setup()

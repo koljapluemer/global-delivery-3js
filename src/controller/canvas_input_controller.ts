@@ -14,7 +14,10 @@ import type { CrateLoadPreview } from '../view/game/crate_load_preview'
 import type { VehiclePlacementPreview } from '../view/game/vehicle_placement_preview'
 import type { LabelRenderer } from '../view/game/label_renderer'
 import type { GameItemRenderer } from '../view/game/game_item_renderer'
+import type { NavApi } from './navigation'
 import type { Actor } from 'xstate'
+import { AvailableVehicleTypes } from '../model/db/vehicles'
+import { isVehicleTileValid } from './tile_hover_controller'
 
 const DRAG_THRESHOLD_PX = 5
 
@@ -35,6 +38,7 @@ export interface CanvasInputControllerDeps {
   crateLoadPreview: CrateLoadPreview | null
   vehiclePlacementPreview: VehiclePlacementPreview | null
   getOnVehicleTilePlaced: () => ((tileId: number) => void) | null
+  navApi: NavApi
   rerender: () => Promise<void>
 }
 
@@ -209,9 +213,14 @@ export class CanvasInputController {
 
     if (state === 'vehiclePlacement') {
       if (lastHoveredTile) {
-        vehiclePlacementPreview?.hide()
-        this.deps.getOnVehicleTilePlaced()?.(lastHoveredTile.tile_id)
-        inputModeActor.send({ type: 'CONFIRM_VEHICLE_PLACEMENT', tileId: lastHoveredTile.tile_id })
+        const vehicleType = AvailableVehicleTypes[ctx.vehicleTypeId ?? '']
+        const legal = vehicleType !== undefined
+          && isVehicleTileValid(lastHoveredTile.tile_id, vehicleType.navMesh, this.deps.navApi, this.deps.getDerived().occupiedTiles)
+        if (legal) {
+          vehiclePlacementPreview?.hide()
+          this.deps.getOnVehicleTilePlaced()?.(lastHoveredTile.tile_id)
+          inputModeActor.send({ type: 'CONFIRM_VEHICLE_PLACEMENT', tileId: lastHoveredTile.tile_id })
+        }
       }
       this.pointerDownHit = null
       return
