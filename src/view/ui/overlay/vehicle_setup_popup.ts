@@ -63,20 +63,10 @@ const BUTTON_STYLE: Partial<CSSStyleDeclaration> = {
   cursor: 'pointer',
 }
 
-function hsvToHex(hue: number): string {
-  const h = hue / 60
-  const f = h - Math.floor(h)
-  const p = 0
-  const q = Math.round(255 * (1 - f))
-  const t = Math.round(255 * f)
-  const v = 255
-  const i = Math.floor(h) % 6
-  const [r, g, b] = [
-    [v, t, p, p, q, v],
-    [q, v, v, t, p, p],
-    [p, p, t, v, v, q],
-  ].map((channel) => channel[i])
-  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`
+/** Approximate the color hsvColor() produces (S=0.8, V=0.8) as a CSS hsl() string. */
+function hueToSwatchCss(hue: number): string {
+  // hsvColor uses S=0.8, V=0.8 → HSL: L≈0.48, SL≈0.67
+  return `hsl(${hue}, 67%, 48%)`
 }
 
 /** Modal popup shown after vehicle tile placement. Collects name and hue, resolves a Promise. */
@@ -144,7 +134,7 @@ export class VehicleSetupPopup {
       hueSlider.value = '60'
 
       const updateSwatch = (): void => {
-        swatch.style.background = hsvToHex(Number(hueSlider.value))
+        swatch.style.background = hueToSwatchCss(Number(hueSlider.value))
       }
       updateSwatch()
       hueSlider.addEventListener('input', updateSwatch)

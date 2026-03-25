@@ -161,16 +161,17 @@ export class GameFlowController {
   }
 
   private async runCardPickSequence(kinds: CardKind[]): Promise<void> {
-    for (let i = 0; i < kinds.length; i++) {
-      const def = CARD_DEFINITIONS[kinds[i]]
+    const remaining = [...kinds]
+    while (remaining.length > 0) {
       const picked = await new Promise<CardKind>((resolve) => {
         this.deps.cardPickScreen.onCardPicked = resolve
         this.deps.cardPickScreen.show({
-          cards: [def],
-          prompt: `Pick a card (${kinds.length - i} left)`,
+          cards: remaining.map((k) => CARD_DEFINITIONS[k]),
+          prompt: `Pick a card (${remaining.length} remaining)`,
         })
       })
       this.deps.cardPickScreen.hide()
+      remaining.splice(remaining.indexOf(picked), 1)
       await this.executeCard(picked)
     }
   }
