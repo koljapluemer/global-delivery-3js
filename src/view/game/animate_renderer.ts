@@ -8,8 +8,8 @@ import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import crateUrl from '../../assets/items/crate.glb?url'
 import carUrl from '../../assets/items/vehicles/car.glb?url'
 import boatUrl from '../../assets/items/vehicles/boat.glb?url'
+import { ITEM_SCALE } from './render_constants'
 
-const CRATE_SCALE = 0.004
 const CRATE_ON_VEHICLE_OFFSET = 0.015
 
 const LOCAL_Y = new THREE.Vector3(0, 1, 0)
@@ -94,7 +94,7 @@ export class AnimateRenderer {
       const gltf = await this.loadGltf(url)
       const obj = gltf.scene.clone()
       cloneMaterials(obj)
-      obj.scale.setScalar(vehicle.vehicleType.scale)
+      obj.scale.setScalar(ITEM_SCALE)
       obj.quaternion.copy(vehicleQuaternion(wp.normal, null))
       obj.position.copy(wp.pos).addScaledVector(wp.normal, vehicle.vehicleType.offsetAlongNormal)
       applyPrimaryColor(obj, hsvColor(vehicle.hue))
@@ -113,7 +113,7 @@ export class AnimateRenderer {
       const gltf = await this.loadGltf(crateUrl)
       const obj = gltf.scene.clone()
       cloneMaterials(obj)
-      obj.scale.setScalar(CRATE_SCALE)
+      obj.scale.setScalar(ITEM_SCALE)
       obj.quaternion.setFromUnitVectors(LOCAL_Y, wp.normal)
       obj.position.copy(wp.pos)
 
@@ -135,7 +135,7 @@ export class AnimateRenderer {
           const gltf = await this.loadGltf(crateUrl)
           const obj = gltf.scene.clone()
           cloneMaterials(obj)
-          obj.scale.setScalar(CRATE_SCALE)
+          obj.scale.setScalar(ITEM_SCALE)
           // Add to scene first so it has a valid world transform for attach() to work
           this.scene.add(obj)
           this.objects.push(obj)

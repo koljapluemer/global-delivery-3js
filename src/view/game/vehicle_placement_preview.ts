@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { applyPrimaryColor } from './color_utils'
+import { ITEM_SCALE } from './render_constants'
 
 function cloneMaterialsInObject(obj: THREE.Object3D): void {
   obj.traverse((child) => {
@@ -56,7 +57,7 @@ export class VehiclePlacementPreview {
 
     const obj = gltf.scene.clone()
     cloneMaterialsInObject(obj)
-    obj.scale.setScalar(vehicleType.scale)
+    obj.scale.setScalar(ITEM_SCALE)
     obj.quaternion.setFromUnitVectors(UP, outwardNormal)
     obj.position.copy(tilePos).addScaledVector(outwardNormal, vehicleType.offsetAlongNormal)
 

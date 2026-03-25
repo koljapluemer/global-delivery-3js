@@ -14,9 +14,8 @@ import pinUrl from '../../assets/ui/pin.glb?url'
 import roundedArrowUrl from '../../assets/ui/rounded_arrow.glb?url'
 import checkmarkUrl from '../../assets/ui/checkmark.png?url'
 import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
+import { ITEM_SCALE } from './render_constants'
 
-/** Uniform scale applied to each crate model. */
-const CRATE_SCALE = 0.004
 /** How far to push each crate along the tile's outward surface normal, in world units. */
 const CRATE_SURFACE_OFFSET = 0
 
@@ -180,7 +179,7 @@ export class GameItemRenderer {
 
       const obj = (await this.loadGltf(url)).scene.clone()
       cloneMaterialsInObject(obj)
-      obj.scale.setScalar(vehicleType.scale)
+      obj.scale.setScalar(ITEM_SCALE)
       obj.quaternion.setFromUnitVectors(UP, outwardNormal)
       obj.position.copy(tilePos).addScaledVector(outwardNormal, vehicleType.offsetAlongNormal)
       applyPrimaryColor(obj, hsvColor(vehicle.hue))
@@ -203,7 +202,7 @@ export class GameItemRenderer {
 
       const obj = (await this.loadGltf(crateUrl)).scene.clone()
       cloneMaterialsInObject(obj)
-      obj.scale.setScalar(CRATE_SCALE)
+      obj.scale.setScalar(ITEM_SCALE)
       obj.quaternion.setFromUnitVectors(UP, outwardNormal)
       obj.position.copy(tilePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)
       const crateMeta = { entityType: 'CRATE', entityId: crateId, tileId }
@@ -394,7 +393,7 @@ export class GameItemRenderer {
 
     const ghost = (await this.loadGltf(crateUrl)).scene.clone()
     cloneMaterialsInObject(ghost)
-    ghost.scale.setScalar(CRATE_SCALE)
+    ghost.scale.setScalar(ITEM_SCALE)
     ghost.quaternion.setFromUnitVectors(UP, outwardNormal)
     ghost.position.copy(cratePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET)
     const ghostMeta = { entityType: 'GHOST_CRATE', crateId, stepIndex, tileId }
