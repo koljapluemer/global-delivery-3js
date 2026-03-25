@@ -172,7 +172,11 @@ export function derivePlanState(plan: Plan, navApi: NavApi, tileApi: TileCenters
     Object.entries(plan.initialState.cratePositions).map(([k, v]) => [Number(k), v]),
   )
   const vehicleCargo = new Map<number, Set<number>>(
-    Object.keys(plan.vehicles).map((k) => [Number(k), new Set<number>()]),
+    Object.keys(plan.vehicles).map((k) => {
+      const vehicleId = Number(k)
+      const initialCrates = plan.initialState.vehicleCargo[vehicleId] ?? []
+      return [vehicleId, new Set<number>(initialCrates)]
+    }),
   )
   const deliveredCrates = new Set<number>()
 

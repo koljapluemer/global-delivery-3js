@@ -3,7 +3,8 @@ import type { Vehicle } from './Vehicle'
 
 export interface InitialState {
   vehiclePositions: Record<number, number>  // vehicleId → tileId
-  cratePositions: Record<number, number>    // crateId → tileId
+  cratePositions: Record<number, number>    // crateId → tileId (ground crates only)
+  vehicleCargo: Record<number, number[]>    // vehicleId → crateId[]
 }
 
 export interface JourneyIntent {

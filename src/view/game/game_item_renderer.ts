@@ -190,6 +190,38 @@ export class GameItemRenderer {
       this.scene.add(obj)
       this.objects.push(obj)
       this.pickables.push(obj)
+
+      // Render crates loaded on this vehicle at their Cargo-XX slot positions
+      const cargoIds = [...(initialSnapshot.vehicleCargo.get(vehicleId) ?? [])]
+      if (cargoIds.length > 0) {
+        obj.updateWorldMatrix(true, true)
+        for (let slotIndex = 0; slotIndex < cargoIds.length; slotIndex++) {
+          const crateId = cargoIds[slotIndex]
+          const slotName = `Cargo-${String(slotIndex).padStart(2, '0')}`
+          let slotObj: THREE.Object3D | null = null
+          obj.traverse((child) => { if (child.name === slotName) slotObj = child })
+
+          const crateObj = (await this.loadGltf(crateUrl)).scene.clone()
+          cloneMaterialsInObject(crateObj)
+          crateObj.scale.setScalar(ITEM_SCALE)
+
+          if (slotObj) {
+            const slotWorld = new THREE.Vector3()
+            ;(slotObj as THREE.Object3D).getWorldPosition(slotWorld)
+            crateObj.position.copy(slotWorld)
+            crateObj.quaternion.setFromUnitVectors(UP, outwardNormal)
+          } else {
+            crateObj.position.copy(tilePos).addScaledVector(outwardNormal, vehicleType.offsetAlongNormal)
+          }
+
+          const crateMeta = { entityType: 'CRATE', entityId: crateId }
+          crateObj.userData = crateMeta
+          crateObj.traverse((child) => { child.userData = crateMeta })
+          this.scene.add(crateObj)
+          this.objects.push(crateObj)
+          this.pickables.push(crateObj)
+        }
+      }
     }
 
     // Render crates on ground

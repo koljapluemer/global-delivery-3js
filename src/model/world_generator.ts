@@ -18,7 +18,7 @@ export function emptyPlan(): Plan {
   return {
     vehicles: {},
     crates: {},
-    initialState: { vehiclePositions: {}, cratePositions: {} },
+    initialState: { vehiclePositions: {}, cratePositions: {}, vehicleCargo: {} },
     steps: [],
   }
 }

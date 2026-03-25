@@ -492,12 +492,9 @@ export class App {
     const vehiclePositions: Record<number, number> = Object.fromEntries(lastSnap.vehiclePositions)
 
     const cratePositions: Record<number, number> = Object.fromEntries(lastSnap.crateOnGround)
+    const vehicleCargo: Record<number, number[]> = {}
     for (const [vehicleId, crateIds] of lastSnap.vehicleCargo) {
-      const vTile = lastSnap.vehiclePositions.get(vehicleId)
-      if (vTile === undefined) continue
-      for (const crateId of crateIds) {
-        cratePositions[crateId] = vTile
-      }
+      vehicleCargo[vehicleId] = [...crateIds]
     }
 
     const plan = intentManager.getPlan()
@@ -517,7 +514,7 @@ export class App {
     intentManager.resetPlan({
       ...plan,
       crates: updatedCrates,
-      initialState: { vehiclePositions, cratePositions },
+      initialState: { vehiclePositions, cratePositions, vehicleCargo },
       steps: [],
     })
 

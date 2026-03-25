@@ -32,7 +32,7 @@ navApi.load()
 const intentManager = new PlanIntentManager({
   vehicles: {},
   crates: {},
-  initialState: { vehiclePositions: {}, cratePositions: {} },
+  initialState: { vehiclePositions: {}, cratePositions: {}, vehicleCargo: {} },
   steps: [],
 })
 const inputModeActor = createActor(inputModeMachine).start()
