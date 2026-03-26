@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { InteractionManager } from 'three.interactive'
-import { findFirstValidInsertionPoint } from './plan_deriver'
+import { isValidInsertionPoint } from './plan_deriver'
 import { inputStateValue } from './input_mode/input_mode_machine'
 import type { DerivedPlanState } from '../model/types/DerivedPlanState'
 import type { Plan } from '../model/types/Plan'
@@ -57,20 +57,24 @@ export class SceneInteractionManager {
         const snapshot = inputModeActor.getSnapshot()
         if (inputStateValue(snapshot) !== 'crateLoad' || !isOver) return
         const ctx = snapshot.context
-        const meta = obj.userData as { entityType?: string; entityId?: number; vehicleId?: number }
+        const meta = obj.userData as { entityType?: string; entityId?: number; vehicleId?: number; stepIndex?: number }
         let vehicleId: number | undefined
-        if (meta.entityType === 'VEHICLE' && meta.entityId !== undefined) vehicleId = meta.entityId
-        else if (meta.entityType === 'PIN' && meta.vehicleId !== undefined) vehicleId = meta.vehicleId
+        let insertAfter = -1
+        if (meta.entityType === 'VEHICLE' && meta.entityId !== undefined) {
+          vehicleId = meta.entityId
+        } else if (meta.entityType === 'PIN' && meta.vehicleId !== undefined) {
+          vehicleId = meta.vehicleId
+          insertAfter = meta.stepIndex!
+        }
         const derived = getDerived()
         if (vehicleId !== undefined && ctx.crateId !== undefined) {
           const intent = { kind: 'LOAD' as const, crateId: ctx.crateId, vehicleId }
-          const insertAfter = findFirstValidInsertionPoint(intent, derived)
-          if (insertAfter !== null) {
+          if (isValidInsertionPoint(intent, insertAfter, derived)) {
             inputModeActor.send({
               type: 'UPDATE_LOAD_TARGET',
               payload: { vehicleId, insertAfterStepIndex: insertAfter },
             })
-            const snap = derived.stepSnapshots[insertAfter]
+            const snap = insertAfter < 0 ? derived.initialSnapshot : derived.stepSnapshots[insertAfter]
             const crateTileAtLoad = snap.crateOnGround.get(ctx.crateId)
             const vehicleTileAtLoad = snap.vehiclePositions.get(vehicleId)
             if (crateLoadPreview && crateTileAtLoad !== undefined && vehicleTileAtLoad !== undefined) {

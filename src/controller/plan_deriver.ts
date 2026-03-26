@@ -268,6 +268,16 @@ function intentInValidCargoActions(intent: CargoIntent, v: ValidCargoActions): b
   }
 }
 
+/** Check whether `intent` is valid at a specific insertion point (insertAfter = -1 means before all steps). */
+export function isValidInsertionPoint(
+  intent: CargoIntent,
+  insertAfter: number,
+  derived: DerivedPlanState,
+): boolean {
+  const snap = insertAfter < 0 ? derived.initialSnapshot : derived.stepSnapshots[insertAfter]
+  return snap !== undefined && intentInValidCargoActions(intent, snap.validCargoActions)
+}
+
 export function findFirstValidInsertionPoint(
   intent: CargoIntent,
   derived: DerivedPlanState,
