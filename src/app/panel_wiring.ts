@@ -10,6 +10,8 @@ export interface PanelWiringDeps {
   getDerived: () => DerivedPlanState
   getPlan: () => Plan
   onConfirmPlan?: () => void
+  onResetPlan?: () => void
+  onBackToMenu?: () => void
 }
 
 export function wirePanelCallbacks(deps: PanelWiringDeps): void {
@@ -18,6 +20,8 @@ export function wirePanelCallbacks(deps: PanelWiringDeps): void {
     intentManager,
     rerender,
     onConfirmPlan,
+    onResetPlan,
+    onBackToMenu,
   } = deps
 
   planPanel.onRemoveJourneyIntent = async (stepIndex, vehicleId) => {
@@ -41,4 +45,6 @@ export function wirePanelCallbacks(deps: PanelWiringDeps): void {
     await rerender()
   }
   planPanel.onConfirmPlan = () => onConfirmPlan?.()
+  planPanel.onResetPlan = () => onResetPlan?.()
+  planPanel.onBackToMenu = () => onBackToMenu?.()
 }

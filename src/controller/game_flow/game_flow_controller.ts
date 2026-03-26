@@ -87,11 +87,16 @@ export class GameFlowController {
 
         case 'ANIMATE': {
           const travelCost = app.getDerived().totalTraveltime
+          const plan = this.deps.intentManager.getPlan()
+          const derived = app.getDerived()
+          const crateIds = Object.keys(plan.crates).map(Number)
+          const completionBonus =
+            crateIds.length > 0 && crateIds.every((id) => derived.deliveredCrates.has(id)) ? 500 : 0
           void app.enterAnimateMode(async (stats) => {
             app.advancePlanToNextTurn()
 
             const turnFee = 100 + 25 * gameState.turnNumber
-            gameState.timecostBudget += stats.timecostEarned - travelCost - turnFee
+            gameState.timecostBudget += stats.timecostEarned + completionBonus - travelCost - turnFee
             gameState.cratesDelivered += stats.cratesDelivered
             gameState.turnNumber++
 
@@ -114,6 +119,7 @@ export class GameFlowController {
             cratesDelivered: gameState.cratesDelivered,
             turnNumber: gameState.turnNumber,
             finalBudget: gameState.timecostBudget,
+            seed: this.lastSeed.value,
           })
           break
       }
@@ -132,6 +138,16 @@ export class GameFlowController {
       this.autoPlace = this.lastSeed.autoPlace ?? false
       this.isNewGame = true
       this.actor.send({ type: 'RESTART' })
+    }
+
+    this.deps.gameOverScreen.onMainMenu = () => {
+      this.isNewGame = true
+      this.actor.send({ type: 'GO_TO_MENU' })
+    }
+
+    app.onBackToMenu = () => {
+      this.isNewGame = true
+      this.actor.send({ type: 'GO_TO_MENU' })
     }
 
     this.actor.start()

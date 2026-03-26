@@ -79,6 +79,7 @@ export class App {
   private countryHighlightRenderer: CountryHighlightRenderer | null = null
   private fairTileHighlightRenderer: FairTileHighlightRenderer | null = null
   onConfirmPlan: (() => void) | null = null
+  onBackToMenu: (() => void) | null = null
 
   constructor(deps: AppDeps) {
     this.deps = deps
@@ -202,12 +203,18 @@ export class App {
         )
         this.labelRenderer.onEntityClick = (_, worldPosition) => {
           this.countryHighlightRenderer?.hide()
+          this.deps.planPanel.setHighlightedCountry(null)
           mainCamera.panTo(worldPosition)
         }
         this.labelRenderer.onLocateCountry = (countryName, nearHint) => {
           this.countryHighlightRenderer?.hide()
           const nearestTile = this.countryHighlightRenderer?.show(countryName, tileCentersApi, mainCamera.camera.position) ?? nearHint
+          this.deps.planPanel.setHighlightedCountry(countryName)
           mainCamera.panTo(nearestTile)
+        }
+        this.deps.planPanel.onClearHighlight = () => {
+          this.countryHighlightRenderer?.hide()
+          this.deps.planPanel.setHighlightedCountry(null)
         }
         this.labelRenderer.onPinMenuOpen = (vehicleId, stepIndex, panel, close) => {
           buildPinMenu(panel,
@@ -267,6 +274,12 @@ export class App {
           getDerived: () => this.derived,
           getPlan: () => intentManager.getPlan(),
           onConfirmPlan: () => this.onConfirmPlan?.(),
+          onResetPlan: async () => {
+            const plan = intentManager.getPlan()
+            intentManager.resetPlan({ ...plan, steps: [] })
+            await this.rerender()
+          },
+          onBackToMenu: () => this.onBackToMenu?.(),
         })
 
         subscribeInputModeUI({
@@ -393,6 +406,8 @@ export class App {
     const { globeScene, planPanel, tileCentersApi } = this.deps
 
     planPanel.hide()
+    this.countryHighlightRenderer?.hide()
+    this.deps.planPanel.setHighlightedCountry(null)
 
     this.deps.gameItemRenderer.dispose()
     this.labelRenderer?.dispose()
@@ -438,12 +453,18 @@ export class App {
       )
       this.labelRenderer.onEntityClick = (_, worldPosition) => {
         this.countryHighlightRenderer?.hide()
+        this.deps.planPanel.setHighlightedCountry(null)
         this.deps.mainCamera.panTo(worldPosition)
       }
       this.labelRenderer.onLocateCountry = (countryName, nearHint) => {
         this.countryHighlightRenderer?.hide()
         const nearestTile = this.countryHighlightRenderer?.show(countryName, this.deps.tileCentersApi, this.deps.mainCamera.camera.position) ?? nearHint
+        this.deps.planPanel.setHighlightedCountry(countryName)
         this.deps.mainCamera.panTo(nearestTile)
+      }
+      this.deps.planPanel.onClearHighlight = () => {
+        this.countryHighlightRenderer?.hide()
+        this.deps.planPanel.setHighlightedCountry(null)
       }
       this.labelRenderer.onPinMenuOpen = (vehicleId, stepIndex, panel, close) => {
         buildPinMenu(panel,
@@ -510,6 +531,7 @@ export class App {
       const newLifetime = crate.remainingLifetime - 1
       if (newLifetime <= 0) {
         delete cratePositions[crateId]
+        this.deps.onEvent?.({ kind: 'CRATE_EXPIRED', destinationCountry: crate.destinationCountry })
       } else {
         updatedCrates[crateId] = { ...crate, remainingLifetime: newLifetime }
       }

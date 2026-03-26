@@ -7,6 +7,7 @@ export type GameFlowEvent =
   | { type: 'CONFIRM_PLAN' }
   | { type: 'ANIMATION_DONE'; outcome: 'CONTINUE' | 'GAME_OVER' }
   | { type: 'RESTART' }
+  | { type: 'GO_TO_MENU' }
 
 export const gameFlowMachine = createMachine(
   {
@@ -27,6 +28,7 @@ export const gameFlowMachine = createMachine(
       PLAN: {
         on: {
           CONFIRM_PLAN: 'ANIMATE',
+          GO_TO_MENU: 'MAIN_MENU',
         },
       },
       ANIMATE: {
@@ -45,6 +47,7 @@ export const gameFlowMachine = createMachine(
       GAME_OVER: {
         on: {
           RESTART: 'CARD_PICK',
+          GO_TO_MENU: 'MAIN_MENU',
         },
       },
     },

@@ -1,11 +1,12 @@
 import { createElement, Trash2 } from 'lucide'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import type { Plan, CargoIntent } from '../../../model/types/Plan'
-import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep, DerivedCargoAction } from '../../../model/types/DerivedPlanState'
+import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep, DerivedCargoAction, DerivedJourneyIntent } from '../../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
 import type { EntityTarget } from '../../../model/types/EntityTarget'
 import type { TurnEconomy } from '../../../controller/turn_economy'
 import { snapshotBefore } from '../../../controller/plan_deriver'
+import { buildHoldButton } from '../shared/hold_button'
 
 const DROP_ZONE_STYLE: Record<string, string> = {
   minHeight: '24px',
@@ -32,11 +33,15 @@ export class PlanPanel {
   onConfirmPlan: (() => void) | null = null
   onFocusTile: ((tileId: number) => void) | null = null
   onFocusEntity: ((target: EntityTarget) => void) | null = null
+  onResetPlan: (() => void) | null = null
+  onBackToMenu: (() => void) | null = null
+  onClearHighlight: (() => void) | null = null
 
   private containerEl: HTMLElement | null = null
   private headerEl: HTMLElement | null = null
   private stepsEl: HTMLElement | null = null
   private countryFooterEl: HTMLElement | null = null
+  private highlightBadgeEl: HTMLElement | null = null
   private tileApi: TileCentersApi | null = null
   private draggableCleanups: Array<() => void> = []
   private dropTargetCleanups: Array<() => void> = []
@@ -80,6 +85,52 @@ export class PlanPanel {
     })
     aside.appendChild(stepsEl)
 
+    // --- Reset plan hold button ---
+    const resetBtn = buildHoldButton('Reset Plan', 1000, () => this.onResetPlan?.())
+    Object.assign(resetBtn.style, {
+      margin: '0 1rem 0.4rem',
+    })
+    aside.appendChild(resetBtn)
+
+    // --- Country highlight badge (hidden by default) ---
+    const highlightBadge = document.createElement('div')
+    Object.assign(highlightBadge.style, {
+      display: 'none',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '0.3rem 1rem',
+      fontSize: '11px',
+      borderTop: '1px solid rgba(255,255,255,0.06)',
+    })
+    const dot = document.createElement('span')
+    Object.assign(dot.style, {
+      width: '10px',
+      height: '10px',
+      borderRadius: '50%',
+      background: '#ffdd44',
+      flexShrink: '0',
+      display: 'inline-block',
+    })
+    const badgeLabel = document.createElement('span')
+    Object.assign(badgeLabel.style, { flex: '1', opacity: '0.85' })
+    const clearBtn = document.createElement('button')
+    clearBtn.textContent = '×'
+    Object.assign(clearBtn.style, {
+      background: 'none',
+      border: 'none',
+      color: 'rgba(255,255,255,0.5)',
+      cursor: 'pointer',
+      fontSize: '14px',
+      lineHeight: '1',
+      padding: '0 2px',
+      flexShrink: '0',
+    })
+    clearBtn.addEventListener('click', () => this.onClearHighlight?.())
+    highlightBadge.appendChild(dot)
+    highlightBadge.appendChild(badgeLabel)
+    highlightBadge.appendChild(clearBtn)
+    aside.appendChild(highlightBadge)
+
     // --- Country hover footer ---
     const countryFooter = document.createElement('div')
     Object.assign(countryFooter.style, {
@@ -92,10 +143,20 @@ export class PlanPanel {
     })
     aside.appendChild(countryFooter)
 
+    // --- Back to menu hold button ---
+    const backBtn = buildHoldButton('Back to Menu', 1000, () => this.onBackToMenu?.())
+    Object.assign(backBtn.style, {
+      margin: '0.4rem 1rem',
+    })
+    aside.appendChild(backBtn)
+
     this.containerEl = aside
     this.headerEl = header
     this.stepsEl = stepsEl
     this.countryFooterEl = countryFooter
+    this.highlightBadgeEl = highlightBadge
+    // Store badgeLabel reference via dataset for updates
+    highlightBadge.dataset.labelRef = 'true'
     this.tileApi = tileApi
 
     container.appendChild(aside)
@@ -125,6 +186,7 @@ export class PlanPanel {
     this.headerEl = null
     this.stepsEl = null
     this.countryFooterEl = null
+    this.highlightBadgeEl = null
     this.tileApi = null
   }
 
@@ -139,6 +201,18 @@ export class PlanPanel {
   updateHoveredCountry(name: string | null): void {
     if (this.countryFooterEl) {
       this.countryFooterEl.textContent = name ?? ''
+    }
+  }
+
+  setHighlightedCountry(name: string | null): void {
+    const badge = this.highlightBadgeEl
+    if (!badge) return
+    if (name === null) {
+      badge.style.display = 'none'
+    } else {
+      const labelEl = badge.querySelector('span:nth-child(2)') as HTMLElement | null
+      if (labelEl) labelEl.textContent = name
+      badge.style.display = 'flex'
     }
   }
 
@@ -206,6 +280,9 @@ export class PlanPanel {
     table.appendChild(row('Travel Time Cost', economy.travelCost, '-'))
     table.appendChild(row('Turn Fee', economy.turnFee, '-'))
     table.appendChild(row('Delivery Reward', economy.reward, '+'))
+    if (economy.completionBonus > 0) {
+      table.appendChild(row('All Delivered Bonus', economy.completionBonus, '+'))
+    }
 
     const divider = document.createElement('div')
     Object.assign(divider.style, {
@@ -448,55 +525,7 @@ export class PlanPanel {
     Object.assign(journeysDiv.style, { display: 'flex', flexDirection: 'row', gap: '4px', flexWrap: 'nowrap' })
 
     for (const j of step.journeys) {
-      const vehicle = plan.vehicles[j.vehicleId]
-      const tile = this.tileApi!.getTileById(j.toTileId)
-      const destText = tile?.country_name ?? 'open sea'
-
-      const card = document.createElement('div')
-      Object.assign(card.style, {
-        ...JOURNEY_CARD_DEFAULT_STYLE,
-        borderRadius: '6px',
-        padding: '6px 8px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '6px',
-        cursor: 'grab',
-        minHeight: `${Math.max(28, j.traveltime)}px`,
-      })
-      card.dataset.draggable = 'journey'
-      card.dataset.stepIndex = String(step.stepIndex)
-      card.dataset.vehicleId = String(j.vehicleId)
-
-      const text = document.createElement('span')
-      text.textContent = `${vehicle?.name ?? '?'} → ${destText}`
-      Object.assign(text.style, { fontSize: '12px', flex: '1', cursor: 'pointer' })
-      text.addEventListener('click', (e) => {
-        e.stopPropagation()
-        this.onFocusTile?.(j.toTileId)
-        this.onFocusEntity?.({ kind: 'VEHICLE', id: j.vehicleId })
-      })
-
-      const removeBtn = document.createElement('button')
-      removeBtn.title = 'Remove journey'
-      Object.assign(removeBtn.style, {
-        flex: '0 0 auto',
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        padding: '2px',
-        color: '#ff6b6b',
-        lineHeight: '0',
-      })
-      removeBtn.appendChild(createElement(Trash2, { width: 12, height: 12 }))
-      removeBtn.addEventListener('click', (e) => {
-        e.stopPropagation()
-        this.onRemoveJourneyIntent?.(step.stepIndex, j.vehicleId)
-      })
-
-      card.appendChild(text)
-      card.appendChild(removeBtn)
-      journeysDiv.appendChild(card)
+      journeysDiv.appendChild(this.buildJourneyCard(j, step, plan))
     }
 
     const inStepZone = document.createElement('div')
@@ -508,6 +537,74 @@ export class PlanPanel {
 
     section.appendChild(journeysDiv)
     return section
+  }
+
+  private buildJourneyCard(j: DerivedJourneyIntent, step: DerivedJourneyStep, plan: Plan): HTMLElement {
+    const vehicle = plan.vehicles[j.vehicleId]
+    const tile = this.tileApi!.getTileById(j.toTileId)
+    const destText = tile?.country_name ?? 'open sea'
+    const isMaxTime = j.traveltime >= step.stepTraveltime
+
+    const card = document.createElement('div')
+    Object.assign(card.style, {
+      ...JOURNEY_CARD_DEFAULT_STYLE,
+      borderRadius: '6px',
+      padding: '6px 8px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '4px',
+      cursor: 'grab',
+      minHeight: `${Math.max(28, j.traveltime)}px`,
+      flex: '1',
+    })
+    card.dataset.draggable = 'journey'
+    card.dataset.stepIndex = String(step.stepIndex)
+    card.dataset.vehicleId = String(j.vehicleId)
+
+    const topRow = document.createElement('div')
+    Object.assign(topRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' })
+
+    const text = document.createElement('span')
+    text.textContent = `${vehicle?.name ?? '?'} → ${destText}`
+    Object.assign(text.style, { fontSize: '12px', flex: '1', cursor: 'pointer' })
+    text.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.onFocusTile?.(j.toTileId)
+      this.onFocusEntity?.({ kind: 'VEHICLE', id: j.vehicleId })
+    })
+
+    const removeBtn = document.createElement('button')
+    removeBtn.title = 'Remove journey'
+    Object.assign(removeBtn.style, {
+      flex: '0 0 auto',
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      padding: '2px',
+      color: '#ff6b6b',
+      lineHeight: '0',
+    })
+    removeBtn.appendChild(createElement(Trash2, { width: 12, height: 12 }))
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.onRemoveJourneyIntent?.(step.stepIndex, j.vehicleId)
+    })
+
+    topRow.appendChild(text)
+    topRow.appendChild(removeBtn)
+    card.appendChild(topRow)
+
+    if (j.traveltime > 0) {
+      const ttRow = document.createElement('div')
+      ttRow.textContent = `⏱ ${j.traveltime}`
+      Object.assign(ttRow.style, {
+        fontSize: '10px',
+        opacity: isMaxTime ? '0.75' : '0.35',
+      })
+      card.appendChild(ttRow)
+    }
+
+    return card
   }
 
   private buildCargoSection(step: DerivedCargoStep, plan: Plan): HTMLElement {

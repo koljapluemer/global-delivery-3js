@@ -73,8 +73,8 @@ export class MainMenuScreen {
     Object.assign(div.style, SCREEN_STYLE)
 
     div.appendChild(this.buildTitle())
-    div.appendChild(this.buildStartButton())
     div.appendChild(this.buildDailyButton())
+    div.appendChild(this.buildStartButton())
     div.appendChild(this.buildSeedSection())
 
     this.el = div
@@ -99,7 +99,7 @@ export class MainMenuScreen {
   private buildStartButton(): HTMLButtonElement {
     const btn = document.createElement('button')
     Object.assign(btn.style, BUTTON_STYLE)
-    btn.textContent = 'Start Game'
+    btn.textContent = 'Play'
     btn.addEventListener('click', () => this.handleStartGame())
     btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.2)' })
     btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.12)' })

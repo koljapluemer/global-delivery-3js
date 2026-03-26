@@ -4,6 +4,7 @@ const ACCENT: Record<GameEvent['kind'], string> = {
   CRATE_DELIVERED: '#4caf50',
   VEHICLE_ARRIVED: '#2196f3',
   INVALID_ACTION: '#f44336',
+  CRATE_EXPIRED: '#ff9800',
 }
 
 function formatMessage(event: GameEvent): string {
@@ -11,6 +12,7 @@ function formatMessage(event: GameEvent): string {
     case 'CRATE_DELIVERED': return `Crate delivered to ${event.countryName} (+${event.reward})`
     case 'VEHICLE_ARRIVED': return `${event.vehicleName} arrived in ${event.countryName}`
     case 'INVALID_ACTION': return event.message
+    case 'CRATE_EXPIRED': return `Crate for ${event.destinationCountry} expired`
   }
 }
 
