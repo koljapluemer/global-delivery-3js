@@ -24,4 +24,5 @@ jobs:
           itch_user: kolja_sam
           itch_game: global-delivery
           auto_channel: false
-          files: dist:html5
+          files: |
+            html5 dist
