@@ -17,11 +17,11 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Deploy with butler
-        uses: josephbmanley/butler-publish-itchio-action@v1.0.3
-        env:
-          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
-          CHANNEL: html5
-          ITCH_GAME: global-delivery
-          ITCH_USER: kolja_sam
-          PACKAGE: dist
+      - name: Deploy to itch.io
+        uses: Ayowel/butler-to-itch@v1.3.0
+        with:
+          butler_key: ${{ secrets.BUTLER_API_KEY }}
+          itchio_user: kolja_sam
+          itchio_game: global-delivery
+          channel: html5
+          package: dist
