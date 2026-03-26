@@ -16,6 +16,9 @@ import { MainMenuScreen } from './view/ui/screens/main_menu_screen'
 import { GameOverScreen } from './view/ui/screens/game_over_screen'
 import { CardPickScreen } from './view/ui/screens/card_pick_screen'
 import { GameFlowController } from './controller/game_flow/game_flow_controller'
+import { EventQueue } from './controller/event_queue'
+import { ToastView } from './view/ui/toast/toast_view'
+import type { GameEvent } from './model/types/GameEvent'
 import type { GameState } from './model/types/GameState'
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -54,6 +57,11 @@ cardPickScreen.mount(document.body)
 const vehicleSetupPopup = new VehicleSetupPopup()
 vehicleSetupPopup.mount(document.body)
 
+const eventQueue = new EventQueue<GameEvent>()
+const toastView = new ToastView()
+toastView.mount(document.body)
+eventQueue.subscribe((event) => toastView.push(event))
+
 const gameState: GameState = {
   timecostBudget: 1000,
   turnNumber: 0,
@@ -74,6 +82,7 @@ const app = new App({
   crateLoadMenu,
   gameState,
   vehicleSetupPopup,
+  onEvent: (e) => eventQueue.push(e),
 })
 
 const flowController = new GameFlowController({

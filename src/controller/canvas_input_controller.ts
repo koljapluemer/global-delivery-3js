@@ -40,6 +40,7 @@ export interface CanvasInputControllerDeps {
   getOnVehicleTilePlaced: () => ((tileId: number) => void) | null
   navApi: NavApi
   rerender: () => Promise<void>
+  onInvalidAction?: (message: string) => void
 }
 
 export class CanvasInputController {
@@ -189,6 +190,10 @@ export class CanvasInputController {
         )
         crateDropPreview?.hide()
         await rerender()
+      } else {
+        const tile = lastHoveredTile
+        const message = tile && !tile.is_land ? 'Crate must be dropped on land' : 'No valid drop location'
+        this.deps.onInvalidAction?.(message)
       }
       inputModeActor.send({ type: 'CONFIRM_CRATE_DROP' })
       this.pointerDownHit = null
@@ -205,6 +210,8 @@ export class CanvasInputController {
         })
         crateLoadPreview?.hide()
         await rerender()
+      } else if (!isDrag) {
+        this.deps.onInvalidAction?.('No vehicle can load this crate here')
       }
       inputModeActor.send({ type: 'CONFIRM_CRATE_LOAD' })
       this.pointerDownHit = null

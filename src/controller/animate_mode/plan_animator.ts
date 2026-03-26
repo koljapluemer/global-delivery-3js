@@ -4,6 +4,7 @@ import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep } from '../
 import type { TileCentersApi } from '../layer_0/tile_centers_api'
 import type { LevelStats } from '../../model/types/LevelStats'
 import type { AnimateRenderer } from '../../view/game/animate_renderer'
+import type { GameEvent } from '../../model/types/GameEvent'
 import { emptyLevelStats } from '../../model/types/LevelStats'
 
 /** Duration for animating a single tile step in seconds. */
@@ -20,6 +21,7 @@ export interface PlanAnimatorRunOptions {
   globeCenter: THREE.Vector3
   animRenderer: AnimateRenderer
   onTrackTile?: (tileId: number) => void
+  onEvent?: (event: GameEvent) => void
 }
 
 /**
@@ -122,7 +124,7 @@ export class PlanAnimator {
   }
 
   async run(opts: PlanAnimatorRunOptions): Promise<LevelStats> {
-    const { plan, derived, tileApi, globeCenter, animRenderer, onTrackTile } = opts
+    const { plan, derived, tileApi, globeCenter, animRenderer, onTrackTile, onEvent } = opts
 
     await animRenderer.setup(plan, derived.initialSnapshot, tileApi, globeCenter)
 
@@ -152,6 +154,9 @@ export class PlanAnimator {
               j.vehicleId, j.pathTileIds, plan, tileApi, globeCenter, animRenderer,
               { trackedVehicleId: stepTrackedId, onTrackTile },
             )
+            const lastTileId = j.pathTileIds[j.pathTileIds.length - 1]
+            const countryName = tileApi.getTileById(lastTileId)?.country_name ?? 'unknown'
+            onEvent?.({ kind: 'VEHICLE_ARRIVED', vehicleName: plan.vehicles[j.vehicleId]?.name ?? 'Vehicle', countryName })
           }),
         )
       } else {
@@ -204,6 +209,8 @@ export class PlanAnimator {
             if (crate) {
               stats.timecostEarned += crate.rewardTimecost
               stats.cratesDelivered++
+              const countryName = tileApi.getTileById(intent.toTileId)?.country_name ?? 'unknown'
+              onEvent?.({ kind: 'CRATE_DELIVERED', countryName, reward: crate.rewardTimecost })
             }
             animRenderer.destroyCrate(intent.crateId)
             vehicleSlots.set(intent.vehicleId, Math.max(0, slot - 1))

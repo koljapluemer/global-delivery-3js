@@ -40,6 +40,7 @@ import { FairTileHighlightRenderer } from '../view/game/fair_tile_highlight_rend
 import { VehiclePlacementPreview } from '../view/game/vehicle_placement_preview'
 import { AvailableVehicleTypes } from '../model/db/vehicles'
 import type { VehicleSetupPopup } from '../view/ui/overlay/vehicle_setup_popup'
+import type { GameEvent } from '../model/types/GameEvent'
 
 const INTER_CRATE_DELAY_S = 0.3
 
@@ -57,6 +58,7 @@ export interface AppDeps {
   crateLoadMenu: CrateLoadMenu
   gameState: GameState
   vehicleSetupPopup: VehicleSetupPopup
+  onEvent?: (event: GameEvent) => void
 }
 
 export class App {
@@ -299,6 +301,7 @@ export class App {
           getOnVehicleTilePlaced: () => this.onVehicleTilePlaced,
           navApi,
           rerender: () => this.rerender(),
+          onInvalidAction: (msg) => this.deps.onEvent?.({ kind: 'INVALID_ACTION', message: msg }),
         })
         this.canvasInputController.setup()
       })
@@ -418,6 +421,7 @@ export class App {
         const t = tileCentersApi.getTileById(tileId)
         if (t) this.deps.mainCamera.panTo(new THREE.Vector3(t.x, t.z, -t.y))
       },
+      onEvent: this.deps.onEvent,
     })
 
     this.frameCallback = null
