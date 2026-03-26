@@ -154,7 +154,8 @@ export class CanvasInputController {
         inputModeActor.send({ type: 'POINTER_UP', isDrag: false })
         getLabelRenderer()?.openPinMenu(vehicleId, stepIndex)
       } else {
-        if (lastHoveredTile) {
+        const navMesh = getPlan().vehicles[vehicleId]?.vehicleType.navMesh
+        if (lastHoveredTile && navMesh && this.deps.navApi.isTileOnNavMesh(lastHoveredTile.tile_id, navMesh)) {
           intentManager.updateJourneyTarget(stepIndex, vehicleId, lastHoveredTile.tile_id)
         }
         pinPlacementPreview?.hide()
@@ -168,7 +169,8 @@ export class CanvasInputController {
     if (state === 'routeSplit') {
       const vehicleId = ctx.vehicleId!
       const insertAfterStepIndex = ctx.insertAfterStepIndex!
-      if (isDrag && lastHoveredTile) {
+      const navMesh = getPlan().vehicles[vehicleId]?.vehicleType.navMesh
+      if (isDrag && lastHoveredTile && navMesh && this.deps.navApi.isTileOnNavMesh(lastHoveredTile.tile_id, navMesh)) {
         intentManager.insertJourneyStepAfter(insertAfterStepIndex, vehicleId, lastHoveredTile.tile_id)
       }
       pinPlacementPreview?.hide()
@@ -234,7 +236,8 @@ export class CanvasInputController {
     }
 
     if (state === 'pinPlacement') {
-      if (lastHoveredTile) {
+      const navMesh = getPlan().vehicles[ctx.vehicleId!]?.vehicleType.navMesh
+      if (lastHoveredTile && navMesh && this.deps.navApi.isTileOnNavMesh(lastHoveredTile.tile_id, navMesh)) {
         if (ctx.insertAfterStepIndex !== undefined) {
           intentManager.addOrMergeJourneyAfter(ctx.insertAfterStepIndex, ctx.vehicleId!, lastHoveredTile.tile_id)
         } else {
