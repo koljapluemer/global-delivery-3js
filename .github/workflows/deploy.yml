@@ -21,7 +21,7 @@ jobs:
         uses: Ayowel/butler-to-itch@v1.3.0
         with:
           butler_key: ${{ secrets.BUTLER_API_KEY }}
-          itch_user: kolja_sam
+          itch_user: kolja-sam
           itch_game: global-delivery
           auto_channel: false
           files: |
