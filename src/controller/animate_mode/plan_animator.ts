@@ -2,10 +2,12 @@ import * as THREE from 'three'
 import type { Plan } from '../../model/types/Plan'
 import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep } from '../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../layer_0/tile_centers_api'
+import type { NavApi } from '../navigation'
 import type { LevelStats } from '../../model/types/LevelStats'
 import type { AnimateRenderer } from '../../view/game/animate_renderer'
 import type { GameEvent } from '../../model/types/GameEvent'
 import { emptyLevelStats } from '../../model/types/LevelStats'
+import { describeTileLocation } from '../tile_label'
 
 /** Duration for animating a single tile step in seconds. */
 const SECONDS_PER_TILE = 0.12
@@ -18,6 +20,7 @@ export interface PlanAnimatorRunOptions {
   plan: Plan
   derived: DerivedPlanState
   tileApi: TileCentersApi
+  navApi: NavApi
   globeCenter: THREE.Vector3
   animRenderer: AnimateRenderer
   onTrackTile?: (tileId: number) => void
@@ -124,7 +127,7 @@ export class PlanAnimator {
   }
 
   async run(opts: PlanAnimatorRunOptions): Promise<LevelStats> {
-    const { plan, derived, tileApi, globeCenter, animRenderer, onTrackTile, onEvent } = opts
+    const { plan, derived, tileApi, navApi, globeCenter, animRenderer, onTrackTile, onEvent } = opts
 
     await animRenderer.setup(plan, derived.initialSnapshot, tileApi, globeCenter)
 
@@ -155,7 +158,7 @@ export class PlanAnimator {
               { trackedVehicleId: stepTrackedId, onTrackTile },
             )
             const lastTileId = j.pathTileIds[j.pathTileIds.length - 1]
-            const countryName = tileApi.getTileById(lastTileId)?.country_name ?? 'unknown'
+            const countryName = describeTileLocation(lastTileId, tileApi, navApi)
             onEvent?.({ kind: 'VEHICLE_ARRIVED', vehicleName: plan.vehicles[j.vehicleId]?.name ?? 'Vehicle', countryName })
           }),
         )
@@ -209,7 +212,7 @@ export class PlanAnimator {
             if (crate) {
               stats.timecostEarned += crate.rewardTimecost
               stats.cratesDelivered++
-              const countryName = tileApi.getTileById(intent.toTileId)?.country_name ?? 'unknown'
+              const countryName = describeTileLocation(intent.toTileId, tileApi, navApi)
               onEvent?.({ kind: 'CRATE_DELIVERED', countryName, reward: crate.rewardTimecost })
             }
             animRenderer.destroyCrate(intent.crateId)

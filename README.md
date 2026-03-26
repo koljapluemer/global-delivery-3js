@@ -1,5 +1,7 @@
 # global-delivery-3js
 
+![](doc/screenshot.webp)
+
 Turn-based logistics game on a 3D globe. Each turn you plan vehicle routes and cargo operations, confirm, watch them execute, then repeat until your time budget runs out.
 
 ## Running

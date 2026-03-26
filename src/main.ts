@@ -42,7 +42,7 @@ const inputModeActor = createActor(inputModeMachine).start()
 const gameItemRenderer = new GameItemRenderer(globeScene.scene, navApi, renderer)
 
 const planPanel = new PlanPanel()
-planPanel.mount(document.body, tileCentersApi)
+planPanel.mount(document.body, tileCentersApi, navApi)
 const cancelButton = new CancelButton()
 cancelButton.mount(document.body, () => inputModeActor.send({ type: 'CANCEL' }))
 const crateLoadMenu = new CrateLoadMenu()

@@ -243,13 +243,17 @@ export class App {
         }
         this.labelRenderer.onVehicleMenuOpen = (vehicleId, panel, close) => {
           buildVehicleMenu(panel,
-            { vehicleId, plan: intentManager.getPlan() },
+            { vehicleId, plan: intentManager.getPlan(), derived: this.derived },
             {
               onAddPin: () => {
                 const fromTileId = getVehicleLastTileId(intentManager.getPlan(), vehicleId)
                 if (fromTileId === null) return
                 close()
                 inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId })
+              },
+              onUnload: (crateId) => {
+                close()
+                inputModeActor.send({ type: 'ENTER_CRATE_DROP', vehicleId, stepIndex: -1, crateId })
               },
             },
           )
@@ -430,6 +434,7 @@ export class App {
       plan: this.deps.intentManager.getPlan(),
       derived: this.derived,
       tileApi: tileCentersApi,
+      navApi: this.deps.navApi,
       globeCenter: this.globeCenter,
       animRenderer,
       onTrackTile: (tileId) => {
@@ -493,13 +498,17 @@ export class App {
       }
       this.labelRenderer.onVehicleMenuOpen = (vehicleId, panel, close) => {
         buildVehicleMenu(panel,
-          { vehicleId, plan: this.deps.intentManager.getPlan() },
+          { vehicleId, plan: this.deps.intentManager.getPlan(), derived: this.derived },
           {
             onAddPin: () => {
               const fromTileId = getVehicleLastTileId(this.deps.intentManager.getPlan(), vehicleId)
               if (fromTileId === null) return
               close()
               this.deps.inputModeActor.send({ type: 'ENTER_PIN_PLACEMENT', vehicleId, fromTileId })
+            },
+            onUnload: (crateId) => {
+              close()
+              this.deps.inputModeActor.send({ type: 'ENTER_CRATE_DROP', vehicleId, stepIndex: -1, crateId })
             },
           },
         )
@@ -523,7 +532,10 @@ export class App {
     }
 
     const plan = intentManager.getPlan()
-    const survivingCrateIds = new Set(Object.keys(cratePositions).map(Number))
+    const survivingCrateIds = new Set([
+      ...Object.keys(cratePositions).map(Number),
+      ...Object.values(vehicleCargo).flat(),
+    ])
     const updatedCrates: typeof plan.crates = {}
     for (const [crateIdStr, crate] of Object.entries(plan.crates)) {
       const crateId = Number(crateIdStr)

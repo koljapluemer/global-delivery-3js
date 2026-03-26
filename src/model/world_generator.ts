@@ -2,8 +2,8 @@ import type { Plan } from './types/Plan'
 import type { Crate } from './types/Crate'
 import type { SeededRng } from '../util/seeded_rng'
 
-const CRATE_REWARD_MIN = 50
-const CRATE_REWARD_MAX = 300
+const CRATE_REWARD_MIN = 100
+const CRATE_REWARD_MAX = 500
 const CRATE_REWARD_STEP = 50
 
 export function createRandomCrate(countryNames: string[], rng: SeededRng): Crate {

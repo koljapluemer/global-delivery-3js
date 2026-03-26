@@ -19,8 +19,8 @@ export interface CrateSpawnerDeps {
   rng: SeededRng
 }
 
-const MIN_CRATES = 2
-const MAX_CRATES = 5
+const MIN_CRATES = 3
+const MAX_CRATES = 6
 
 export class CrateSpawner {
   private readonly deps: CrateSpawnerDeps

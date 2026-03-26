@@ -3,10 +3,12 @@ import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/
 import type { Plan, CargoIntent } from '../../../model/types/Plan'
 import type { DerivedPlanState, DerivedJourneyStep, DerivedCargoStep, DerivedCargoAction, DerivedJourneyIntent } from '../../../model/types/DerivedPlanState'
 import type { TileCentersApi } from '../../../controller/layer_0/tile_centers_api'
+import type { NavApi } from '../../../controller/navigation'
 import type { EntityTarget } from '../../../model/types/EntityTarget'
 import type { TurnEconomy } from '../../../controller/turn_economy'
 import { snapshotBefore } from '../../../controller/plan_deriver'
 import { buildHoldButton } from '../shared/hold_button'
+import { describeTileLocation } from '../../../controller/tile_label'
 
 const DROP_ZONE_STYLE: Record<string, string> = {
   minHeight: '24px',
@@ -43,6 +45,7 @@ export class PlanPanel {
   private countryFooterEl: HTMLElement | null = null
   private highlightBadgeEl: HTMLElement | null = null
   private tileApi: TileCentersApi | null = null
+  private navApi: NavApi | null = null
   private draggableCleanups: Array<() => void> = []
   private dropTargetCleanups: Array<() => void> = []
   private monitorCleanup: (() => void) | null = null
@@ -50,7 +53,7 @@ export class PlanPanel {
   private currentDerived: DerivedPlanState | null = null
   private isDragging = false
 
-  mount(container: HTMLElement, tileApi: TileCentersApi): void {
+  mount(container: HTMLElement, tileApi: TileCentersApi, navApi: NavApi): void {
     const aside = document.createElement('aside')
     Object.assign(aside.style, {
       position: 'fixed',
@@ -158,6 +161,7 @@ export class PlanPanel {
     // Store badgeLabel reference via dataset for updates
     highlightBadge.dataset.labelRef = 'true'
     this.tileApi = tileApi
+    this.navApi = navApi
 
     container.appendChild(aside)
 
@@ -217,7 +221,7 @@ export class PlanPanel {
   }
 
   update(plan: Plan, derived: DerivedPlanState, economy: TurnEconomy, score: { turnNumber: number; cratesDelivered: number }, canConfirm: boolean): void {
-    if (!this.headerEl || !this.stepsEl || !this.tileApi) return
+    if (!this.headerEl || !this.stepsEl || !this.tileApi || !this.navApi) return
     if (this.isDragging) return
     this.currentPlan = plan
     this.currentDerived = derived
@@ -541,8 +545,8 @@ export class PlanPanel {
 
   private buildJourneyCard(j: DerivedJourneyIntent, step: DerivedJourneyStep, plan: Plan): HTMLElement {
     const vehicle = plan.vehicles[j.vehicleId]
-    const tile = this.tileApi!.getTileById(j.toTileId)
-    const destText = tile?.country_name ?? 'open sea'
+    const { tileApi, navApi } = this
+    const destText = tileApi && navApi ? describeTileLocation(j.toTileId, tileApi, navApi) : 'Open Sea'
     const isMaxTime = j.traveltime >= step.stepTraveltime
 
     const card = document.createElement('div')
@@ -689,7 +693,8 @@ export class PlanPanel {
   private describeCargoIntent(intent: CargoIntent, plan: Plan): string {
     const vehicleName = (id: number) => plan.vehicles[id]?.name ?? `Vehicle ${id}`
     const crateDest = (id: number) => plan.crates[id]?.destinationCountry ?? `Crate ${id}`
-    const tileName = (tileId: number) => this.tileApi!.getTileById(tileId)?.country_name ?? 'open sea'
+    const { tileApi, navApi } = this
+    const tileName = (tileId: number) => tileApi && navApi ? describeTileLocation(tileId, tileApi, navApi) : 'Open Sea'
 
     switch (intent.kind) {
       case 'LOAD':
