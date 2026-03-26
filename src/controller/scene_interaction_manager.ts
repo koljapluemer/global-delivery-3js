@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { InteractionManager } from 'three.interactive'
-import { isValidInsertionPoint } from './plan_deriver'
+import { findFirstValidLoadInsertionInDwellRange } from './plan_deriver'
 import { inputStateValue } from './input_mode/input_mode_machine'
 import type { DerivedPlanState } from '../model/types/DerivedPlanState'
 import type { Plan } from '../model/types/Plan'
@@ -69,12 +69,13 @@ export class SceneInteractionManager {
         const derived = getDerived()
         if (vehicleId !== undefined && ctx.crateId !== undefined) {
           const intent = { kind: 'LOAD' as const, crateId: ctx.crateId, vehicleId }
-          if (isValidInsertionPoint(intent, insertAfter, derived)) {
+          const resolvedInsertAfter = findFirstValidLoadInsertionInDwellRange(intent, insertAfter, vehicleId, getPlan(), derived)
+          if (resolvedInsertAfter !== null) {
             inputModeActor.send({
               type: 'UPDATE_LOAD_TARGET',
-              payload: { vehicleId, insertAfterStepIndex: insertAfter },
+              payload: { vehicleId, insertAfterStepIndex: resolvedInsertAfter },
             })
-            const snap = insertAfter < 0 ? derived.initialSnapshot : derived.stepSnapshots[insertAfter]
+            const snap = resolvedInsertAfter < 0 ? derived.initialSnapshot : derived.stepSnapshots[resolvedInsertAfter]
             const crateTileAtLoad = snap.crateOnGround.get(ctx.crateId)
             const vehicleTileAtLoad = snap.vehiclePositions.get(vehicleId)
             if (crateLoadPreview && crateTileAtLoad !== undefined && vehicleTileAtLoad !== undefined) {

@@ -268,14 +268,39 @@ function intentInValidCargoActions(intent: CargoIntent, v: ValidCargoActions): b
   }
 }
 
-/** Check whether `intent` is valid at a specific insertion point (insertAfter = -1 means before all steps). */
-export function isValidInsertionPoint(
+/**
+ * Find the first valid insertion point for `intent` while `vehicleId` is stationary at its
+ * `pinStepIndex` position (pass -1 for the vehicle's initial position).
+ *
+ * The dwell range is [pinStepIndex, nextJourneyStepForVehicle - 1]: the vehicle stays at the
+ * same tile from when it arrives (pinStepIndex) until it moves again, so a LOAD can be inserted
+ * at any step in that window where the crate has already landed on the ground.
+ */
+export function findFirstValidLoadInsertionInDwellRange(
   intent: CargoIntent,
-  insertAfter: number,
+  pinStepIndex: number,
+  vehicleId: number,
+  plan: Plan,
   derived: DerivedPlanState,
-): boolean {
-  const snap = insertAfter < 0 ? derived.initialSnapshot : derived.stepSnapshots[insertAfter]
-  return snap !== undefined && intentInValidCargoActions(intent, snap.validCargoActions)
+): number | null {
+  // Upper bound: the step just before this vehicle moves again (exclusive).
+  let nextMoveStep = plan.steps.length
+  for (let i = pinStepIndex + 1; i < plan.steps.length; i++) {
+    const step = plan.steps[i]
+    if (step.kind === 'JOURNEY' && step.journeys.some((j) => j.vehicleId === vehicleId)) {
+      nextMoveStep = i
+      break
+    }
+  }
+
+  if (pinStepIndex < 0) {
+    if (intentInValidCargoActions(intent, derived.initialSnapshot.validCargoActions)) return -1
+  }
+  for (let i = Math.max(0, pinStepIndex); i < nextMoveStep; i++) {
+    const snap = derived.stepSnapshots[i]
+    if (snap && intentInValidCargoActions(intent, snap.validCargoActions)) return i
+  }
+  return null
 }
 
 export function findFirstValidInsertionPoint(
