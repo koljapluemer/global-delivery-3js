@@ -27,6 +27,7 @@ const JOURNEY_CARD_DEFAULT_STYLE: Record<string, string> = {
 }
 
 export class PlanPanel {
+  onShowHowToPlay: (() => void) | null = null
   onRemoveJourneyIntent: ((stepIndex: number, vehicleId: number) => void) | null = null
   onRemoveCargoIntent: ((stepIndex: number) => void) | null = null
   onMoveJourneyIntent: ((vehicleId: number, fromStepIndex: number, toStepIndex: number | 'before-all' | 'after-all') => void) | null = null
@@ -69,6 +70,27 @@ export class PlanPanel {
       maxWidth: '300px',
       overflow: 'hidden',
     })
+
+    // --- How to Play button (first item) ---
+    const howToPlayBtn = document.createElement('button')
+    Object.assign(howToPlayBtn.style, {
+      display: 'block',
+      width: '100%',
+      padding: '0.4rem 1rem',
+      background: 'rgba(255,255,255,0.06)',
+      border: 'none',
+      borderBottom: '1px solid rgba(255,255,255,0.08)',
+      color: 'rgba(255,255,255,0.55)',
+      cursor: 'pointer',
+      fontSize: '0.78rem',
+      letterSpacing: '0.04em',
+      textAlign: 'left',
+    })
+    howToPlayBtn.textContent = '? How to Play'
+    howToPlayBtn.addEventListener('click', () => this.onShowHowToPlay?.())
+    howToPlayBtn.addEventListener('mouseenter', () => { howToPlayBtn.style.background = 'rgba(255,255,255,0.12)' })
+    howToPlayBtn.addEventListener('mouseleave', () => { howToPlayBtn.style.background = 'rgba(255,255,255,0.06)' })
+    aside.appendChild(howToPlayBtn)
 
     // --- Header: score + economy + End Turn button ---
     const header = document.createElement('div')

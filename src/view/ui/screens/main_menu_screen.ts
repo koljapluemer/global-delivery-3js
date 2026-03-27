@@ -63,6 +63,7 @@ const SECONDARY_BUTTON_STYLE: Partial<CSSStyleDeclaration> = {
 
 export class MainMenuScreen {
   onStartGame: ((seed: GameSeed) => void) | null = null
+  onShowHowToPlay: (() => void) | null = null
 
   private el: HTMLElement | null = null
   private seedInput: HTMLInputElement | null = null
@@ -76,6 +77,7 @@ export class MainMenuScreen {
     div.appendChild(this.buildDailyButton())
     div.appendChild(this.buildStartButton())
     div.appendChild(this.buildSeedSection())
+    div.appendChild(this.buildHowToPlayButton())
 
     this.el = div
     container.appendChild(div)
@@ -168,6 +170,17 @@ export class MainMenuScreen {
     section.appendChild(label)
     section.appendChild(input)
     return section
+  }
+
+  private buildHowToPlayButton(): HTMLButtonElement {
+    const btn = document.createElement('button')
+    Object.assign(btn.style, SECONDARY_BUTTON_STYLE)
+    btn.style.marginTop = '0.5rem'
+    btn.textContent = 'How to Play'
+    btn.addEventListener('click', () => this.onShowHowToPlay?.())
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.15)' })
+    btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.08)' })
+    return btn
   }
 
   private handleStartGame(): void {

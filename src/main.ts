@@ -15,6 +15,7 @@ import { App } from './app/App'
 import { MainMenuScreen } from './view/ui/screens/main_menu_screen'
 import { GameOverScreen } from './view/ui/screens/game_over_screen'
 import { CardPickScreen } from './view/ui/screens/card_pick_screen'
+import { HowToPlayScreen } from './view/ui/screens/how_to_play_screen'
 import { GameFlowController } from './controller/game_flow/game_flow_controller'
 import { EventQueue } from './controller/event_queue'
 import { ToastView } from './view/ui/toast/toast_view'
@@ -54,6 +55,8 @@ const gameOverScreen = new GameOverScreen()
 gameOverScreen.mount(document.body)
 const cardPickScreen = new CardPickScreen()
 cardPickScreen.mount(document.body)
+const howToPlayScreen = new HowToPlayScreen()
+howToPlayScreen.mount(document.body)
 const vehicleSetupPopup = new VehicleSetupPopup()
 vehicleSetupPopup.mount(document.body)
 
@@ -95,6 +98,9 @@ const flowController = new GameFlowController({
   tileCentersApi,
   navApi,
 })
+
+mainMenuScreen.onShowHowToPlay = () => howToPlayScreen.show()
+planPanel.onShowHowToPlay = () => howToPlayScreen.show()
 
 globeScene.load().then(({ boundingSphere }) => {
   app.start(boundingSphere)
