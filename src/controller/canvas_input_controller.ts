@@ -237,7 +237,8 @@ export class CanvasInputController {
 
     if (state === 'pinPlacement') {
       const navMesh = getPlan().vehicles[ctx.vehicleId!]?.vehicleType.navMesh
-      if (lastHoveredTile && navMesh && this.deps.navApi.isTileOnNavMesh(lastHoveredTile.tile_id, navMesh)) {
+      const derived = this.deps.getDerived()
+      if (lastHoveredTile && navMesh && this.deps.navApi.isTileOnNavMesh(lastHoveredTile.tile_id, navMesh) && !derived.occupiedTiles.has(lastHoveredTile.tile_id)) {
         if (ctx.insertAfterStepIndex !== undefined) {
           intentManager.addOrMergeJourneyAfter(ctx.insertAfterStepIndex, ctx.vehicleId!, lastHoveredTile.tile_id)
         } else {

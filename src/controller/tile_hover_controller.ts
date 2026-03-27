@@ -104,6 +104,11 @@ export function createTileHoverHandler(
     const vehicle = plan.vehicles[ctx.vehicleId ?? -1]
     if (!vehicle || !deps.pinPlacementPreview) return
 
+    if (deps.getDerived().occupiedTiles.has(tile.tile_id)) {
+      deps.pinPlacementPreview.hide()
+      return
+    }
+
     const fromTileId =
       state === 'pinPlacement' ? ctx.fromTileId! :
       state === 'pinDrag' ? ctx.prevTileId! :
