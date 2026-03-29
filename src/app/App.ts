@@ -103,6 +103,11 @@ export class App {
     if (tile) this.deps.mainCamera.panTo(new THREE.Vector3(tile.x, tile.z, -tile.y))
   }
 
+  /** Set zoom level as 0-1 fraction (0 = closest, 1 = furthest). */
+  setZoomFraction(t: number): void {
+    this.deps.mainCamera.setZoomFraction(t)
+  }
+
   highlightCountry(name: string): void {
     this.countryHighlightRenderer?.show(name, this.deps.tileCentersApi, this.deps.mainCamera.camera.position)
     this.deps.planPanel.setHighlightedCountry(name)

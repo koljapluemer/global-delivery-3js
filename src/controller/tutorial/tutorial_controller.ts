@@ -50,6 +50,7 @@ export class TutorialController {
     intentManager.resetPlan(slide.buildPlan())
     await app.rerender()
     app.showPlanUI()
+    app.setZoomFraction(0.02)
     app.panToTile(slide.panToTileId)
     app.highlightCountry(slide.highlightCountry)
     instructionBox.show(index, TUTORIAL_SLIDES.length)

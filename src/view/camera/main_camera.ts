@@ -96,6 +96,12 @@ export class MainCamera {
     this.camera.updateProjectionMatrix()
   }
 
+  /** Set zoom as a 0-1 fraction: 0 = closest, 1 = furthest. Clamped to [distanceMin, distanceMax]. */
+  setZoomFraction(t: number): void {
+    this.distance = THREE.MathUtils.lerp(this.distanceMin, this.distanceMax, Math.max(0, Math.min(1, t)))
+    this.applyOrbit()
+  }
+
   /** Orbit so the given world position is at screen center (simulates right-drag; target and distance unchanged). Animates over PAN_ANIMATION_DURATION_S. */
   panTo(worldPosition: THREE.Vector3): void {
     const d = worldPosition.clone().sub(this.target)
