@@ -695,8 +695,13 @@ export class LabelRenderer {
     const C = this.globeCenter
     const O = this.camera.position
     const R = this.globeRadius
+    const dist = C.distanceTo(O)
     const signed = anchor.clone().sub(C).dot(O.clone().sub(C)) - R * R
-    const zone = R * C.distanceTo(O) * HORIZON_BLEND_EPSILON
+    // Raw blend zone; clamped so it never exceeds the signed value for a tile
+    // directly under the camera — otherwise close zoom engulfs the whole hemisphere.
+    const rawZone = R * dist * HORIZON_BLEND_EPSILON
+    const visibleDepth = R * (dist - R)
+    const zone = visibleDepth > 1e-4 ? Math.min(rawZone, visibleDepth) : rawZone
     if (zone < 1e-4) return signed >= 0 ? 0 : 1
     return smoothstep(zone, -zone, signed)
   }
