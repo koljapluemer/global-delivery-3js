@@ -75,7 +75,10 @@ export class TutorialController {
       app.showPlanUI()
       app.onConfirmPlan = () => void this.onEndTurn()
       this.animating = false
-      if (succeeded) await this.onNext()
+      if (succeeded) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 500))
+        await this.onNext()
+      }
     })
   }
 
