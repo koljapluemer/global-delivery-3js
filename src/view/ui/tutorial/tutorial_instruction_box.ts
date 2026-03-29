@@ -77,30 +77,6 @@ const RESET_BTN_BASE: Partial<CSSStyleDeclaration> = {
   letterSpacing: '0.02em',
 }
 
-const NEXT_BTN_ENABLED: Partial<CSSStyleDeclaration> = {
-  padding: '0.35rem 1rem',
-  fontSize: '0.82rem',
-  fontWeight: '600',
-  background: 'rgba(80,200,140,0.2)',
-  color: 'rgba(140,240,180,0.95)',
-  border: '1px solid rgba(80,200,140,0.4)',
-  borderRadius: '5px',
-  cursor: 'pointer',
-  letterSpacing: '0.02em',
-}
-
-const NEXT_BTN_DISABLED: Partial<CSSStyleDeclaration> = {
-  padding: '0.35rem 1rem',
-  fontSize: '0.82rem',
-  fontWeight: '600',
-  background: 'rgba(255,255,255,0.03)',
-  color: 'rgba(255,255,255,0.2)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '5px',
-  cursor: 'not-allowed',
-  letterSpacing: '0.02em',
-}
-
 const INLINE_STYLES = `
   .tut-instructions p { margin: 0 0 0.45em 0; }
   .tut-instructions p:last-child { margin-bottom: 0; }
@@ -119,13 +95,11 @@ function ensureInlineStyles(): void {
 }
 
 export class TutorialInstructionBox {
-  onNext: (() => void) | null = null
   onReset: (() => void) | null = null
 
   private el: HTMLElement | null = null
   private progressEl: HTMLElement | null = null
   private instructionsEl: HTMLElement | null = null
-  private nextBtn: HTMLButtonElement | null = null
   private container: HTMLElement | null = null
 
   mount(container: HTMLElement): void {
@@ -174,15 +148,7 @@ export class TutorialInstructionBox {
     resetBtn.addEventListener('mouseenter', () => { resetBtn.style.background = 'rgba(255,255,255,0.11)' })
     resetBtn.addEventListener('mouseleave', () => { resetBtn.style.background = 'rgba(255,255,255,0.06)' })
 
-    const nextBtn = document.createElement('button')
-    Object.assign(nextBtn.style, NEXT_BTN_DISABLED)
-    nextBtn.textContent = 'Next →'
-    nextBtn.disabled = true
-    nextBtn.addEventListener('click', () => { if (!nextBtn.disabled) this.onNext?.() })
-    this.nextBtn = nextBtn
-
     buttonRow.appendChild(resetBtn)
-    buttonRow.appendChild(nextBtn)
     box.appendChild(buttonRow)
 
     this.el = box
@@ -211,10 +177,4 @@ export class TutorialInstructionBox {
     if (this.instructionsEl) this.instructionsEl.innerHTML = html
   }
 
-  setNextEnabled(enabled: boolean): void {
-    const btn = this.nextBtn
-    if (!btn) return
-    btn.disabled = !enabled
-    Object.assign(btn.style, enabled ? NEXT_BTN_ENABLED : NEXT_BTN_DISABLED)
-  }
 }

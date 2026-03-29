@@ -26,9 +26,7 @@ export class TutorialController {
   }
 
   start(): void {
-    const { instructionBox } = this.deps
-    instructionBox.onNext = () => void this.onNext()
-    instructionBox.onReset = () => void this.onReset()
+    this.deps.instructionBox.onReset = () => void this.onReset()
     void this.loadSlide(0)
   }
 
@@ -55,7 +53,6 @@ export class TutorialController {
     app.highlightCountry(slide.highlightCountry)
     instructionBox.show(index, TUTORIAL_SLIDES.length)
     instructionBox.setInstructions(slide.instructions)
-    instructionBox.setNextEnabled(false)
     app.onConfirmPlan = () => void this.onEndTurn()
   }
 
@@ -63,7 +60,7 @@ export class TutorialController {
     if (this.animating) return
     this.animating = true
 
-    const { app, intentManager, instructionBox } = this.deps
+    const { app, intentManager } = this.deps
     app.onConfirmPlan = null
     app.hidePlanUI()
 
@@ -78,7 +75,7 @@ export class TutorialController {
       app.showPlanUI()
       app.onConfirmPlan = () => void this.onEndTurn()
       this.animating = false
-      if (succeeded) instructionBox.setNextEnabled(true)
+      if (succeeded) await this.onNext()
     })
   }
 
