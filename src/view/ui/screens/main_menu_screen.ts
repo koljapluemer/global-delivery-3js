@@ -14,6 +14,8 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 0xffffffff)
 }
 
+const BUTTON_WIDTH = '220px'
+
 const SCREEN_STYLE: Partial<CSSStyleDeclaration> = {
   position: 'fixed',
   inset: '0',
@@ -23,7 +25,7 @@ const SCREEN_STYLE: Partial<CSSStyleDeclaration> = {
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '1.5rem',
+  gap: '0.75rem',
   color: '#fff',
 }
 
@@ -31,31 +33,44 @@ const TITLE_STYLE: Partial<CSSStyleDeclaration> = {
   fontSize: '2.5rem',
   fontWeight: '700',
   letterSpacing: '0.05em',
-  margin: '0',
+  margin: '0 0 0.75rem 0',
 }
 
-const BUTTON_STYLE: Partial<CSSStyleDeclaration> = {
-  padding: '0.75rem 2.5rem',
-  fontSize: '1.1rem',
+const BTN_PLAY: Partial<CSSStyleDeclaration> = {
+  width: BUTTON_WIDTH,
+  padding: '0.9rem 0',
+  fontSize: '1.2rem',
   fontWeight: '600',
-  background: 'rgba(255,255,255,0.12)',
-  color: '#fff',
-  border: '1px solid rgba(255,255,255,0.25)',
   borderRadius: '8px',
   cursor: 'pointer',
   letterSpacing: '0.04em',
+  border: '1px solid rgba(255,255,255,0.22)',
+  background: 'rgba(255,255,255,0.10)',
+  color: '#fff',
 }
 
-const SECONDARY_BUTTON_STYLE: Partial<CSSStyleDeclaration> = {
-  padding: '0.5rem 1.5rem',
+const BTN_SECONDARY: Partial<CSSStyleDeclaration> = {
+  width: BUTTON_WIDTH,
+  padding: '0.65rem 0',
   fontSize: '0.95rem',
   fontWeight: '500',
-  background: 'rgba(255,255,255,0.08)',
-  color: '#ccc',
-  border: '1px solid rgba(255,255,255,0.15)',
   borderRadius: '8px',
   cursor: 'pointer',
   letterSpacing: '0.03em',
+  border: '1px solid rgba(255,255,255,0.13)',
+  background: 'rgba(255,255,255,0.06)',
+  color: '#ccc',
+}
+
+function makeButton(text: string, play = false): HTMLButtonElement {
+  const btn = document.createElement('button')
+  Object.assign(btn.style, play ? BTN_PLAY : BTN_SECONDARY)
+  btn.textContent = text
+  const hoverBg = play ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.12)'
+  const restBg = play ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.06)'
+  btn.addEventListener('mouseenter', () => { btn.style.background = hoverBg })
+  btn.addEventListener('mouseleave', () => { btn.style.background = restBg })
+  return btn
 }
 
 export class MainMenuScreen {
@@ -63,18 +78,16 @@ export class MainMenuScreen {
   onStartTutorial: (() => void) | null = null
 
   private el: HTMLElement | null = null
-  private seedInput: HTMLInputElement | null = null
-  private seedCheckbox: HTMLInputElement | null = null
 
   mount(container: HTMLElement): void {
     const div = document.createElement('div')
     Object.assign(div.style, SCREEN_STYLE)
 
     div.appendChild(this.buildTitle())
+    div.appendChild(this.buildPlayButton())
     div.appendChild(this.buildDailyButton())
-    div.appendChild(this.buildStartButton())
-    div.appendChild(this.buildSeedSection())
     div.appendChild(this.buildTutorialButton())
+    div.appendChild(this.buildSeededButton())
 
     this.el = div
     container.appendChild(div)
@@ -95,95 +108,134 @@ export class MainMenuScreen {
     return title
   }
 
-  private buildStartButton(): HTMLButtonElement {
-    const btn = document.createElement('button')
-    Object.assign(btn.style, BUTTON_STYLE)
-    btn.textContent = 'Play'
-    btn.addEventListener('click', () => this.handleStartGame())
-    btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.2)' })
-    btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.12)' })
+  private buildPlayButton(): HTMLButtonElement {
+    const btn = makeButton('Play', true)
+    btn.addEventListener('click', () => this.onStartGame?.({ value: randomSeed() }))
     return btn
   }
 
   private buildDailyButton(): HTMLButtonElement {
-    const btn = document.createElement('button')
-    Object.assign(btn.style, SECONDARY_BUTTON_STYLE)
-    btn.textContent = 'Daily Challenge'
+    const btn = makeButton('Daily Challenge')
     btn.addEventListener('click', () => this.onStartGame?.({ value: dailySeed(), autoPlace: true }))
-    btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.15)' })
-    btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.08)' })
     return btn
   }
 
-  private buildSeedSection(): HTMLDivElement {
-    const section = document.createElement('div')
-    Object.assign(section.style, {
+  private buildTutorialButton(): HTMLButtonElement {
+    const btn = makeButton('Tutorial')
+    btn.addEventListener('click', () => this.onStartTutorial?.())
+    return btn
+  }
+
+  private buildSeededButton(): HTMLButtonElement {
+    const btn = makeButton('Seeded Game')
+    btn.addEventListener('click', () => this.openSeedModal())
+    return btn
+  }
+
+  private openSeedModal(): void {
+    const backdrop = document.createElement('div')
+    Object.assign(backdrop.style, {
+      position: 'fixed',
+      inset: '0',
+      zIndex: '200',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'rgba(0,0,0,0.6)',
+    })
+
+    const modal = document.createElement('div')
+    Object.assign(modal.style, {
+      background: 'rgba(18,18,26,0.98)',
+      border: '1px solid rgba(255,255,255,0.18)',
+      borderRadius: '12px',
+      padding: '2rem',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: '0.5rem',
+      gap: '1rem',
+      minWidth: '280px',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.7)',
     })
 
-    const label = document.createElement('label')
-    Object.assign(label.style, {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.5rem',
-      fontSize: '0.9rem',
-      color: '#aaa',
-      cursor: 'pointer',
+    const heading = document.createElement('h2')
+    Object.assign(heading.style, {
+      margin: '0',
+      fontSize: '1.2rem',
+      fontWeight: '600',
+      color: '#fff',
+      letterSpacing: '0.04em',
     })
-
-    const checkbox = document.createElement('input')
-    checkbox.type = 'checkbox'
-    this.seedCheckbox = checkbox
-
-    const labelText = document.createElement('span')
-    labelText.textContent = 'Seeded Game'
-
-    label.appendChild(checkbox)
-    label.appendChild(labelText)
+    heading.textContent = 'Seeded Game'
 
     const input = document.createElement('input')
     input.type = 'text'
     input.placeholder = 'Enter seed (text or number)'
     Object.assign(input.style, {
-      display: 'none',
-      padding: '0.4rem 0.75rem',
-      fontSize: '0.9rem',
-      background: 'rgba(255,255,255,0.1)',
+      width: '100%',
+      padding: '0.5rem 0.75rem',
+      fontSize: '0.95rem',
+      background: 'rgba(255,255,255,0.08)',
       color: '#fff',
       border: '1px solid rgba(255,255,255,0.2)',
       borderRadius: '6px',
-      width: '220px',
       textAlign: 'center',
-    })
-    this.seedInput = input
-
-    checkbox.addEventListener('change', () => {
-      input.style.display = checkbox.checked ? 'block' : 'none'
+      boxSizing: 'border-box',
     })
 
-    section.appendChild(label)
-    section.appendChild(input)
-    return section
-  }
+    const buttons = document.createElement('div')
+    Object.assign(buttons.style, {
+      display: 'flex',
+      gap: '0.6rem',
+      width: '100%',
+    })
 
-  private buildTutorialButton(): HTMLButtonElement {
-    const btn = document.createElement('button')
-    Object.assign(btn.style, SECONDARY_BUTTON_STYLE)
-    btn.style.marginTop = '0.5rem'
-    btn.textContent = 'Tutorial'
-    btn.addEventListener('click', () => this.onStartTutorial?.())
-    btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.15)' })
-    btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.08)' })
-    return btn
-  }
+    const cancelBtn = document.createElement('button')
+    Object.assign(cancelBtn.style, {
+      flex: '1',
+      padding: '0.55rem 0',
+      fontSize: '0.95rem',
+      fontWeight: '500',
+      background: 'rgba(255,255,255,0.06)',
+      color: '#aaa',
+      border: '1px solid rgba(255,255,255,0.12)',
+      borderRadius: '7px',
+      cursor: 'pointer',
+    })
+    cancelBtn.textContent = 'Cancel'
+    cancelBtn.addEventListener('click', () => backdrop.remove())
 
-  private handleStartGame(): void {
-    const seeded = this.seedCheckbox?.checked ?? false
-    const raw = this.seedInput?.value ?? ''
-    const value = seeded ? hashString(raw || '0') : randomSeed()
-    this.onStartGame?.({ value })
+    const playBtn = document.createElement('button')
+    Object.assign(playBtn.style, {
+      flex: '1',
+      padding: '0.55rem 0',
+      fontSize: '0.95rem',
+      fontWeight: '600',
+      background: 'rgba(255,255,255,0.12)',
+      color: '#fff',
+      border: '1px solid rgba(255,255,255,0.22)',
+      borderRadius: '7px',
+      cursor: 'pointer',
+    })
+    playBtn.textContent = 'Play'
+
+    const launch = () => {
+      backdrop.remove()
+      this.onStartGame?.({ value: hashString(input.value || '0') })
+    }
+    playBtn.addEventListener('click', launch)
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') launch() })
+
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove() })
+
+    buttons.appendChild(cancelBtn)
+    buttons.appendChild(playBtn)
+    modal.appendChild(heading)
+    modal.appendChild(input)
+    modal.appendChild(buttons)
+    backdrop.appendChild(modal)
+    document.body.appendChild(backdrop)
+
+    setTimeout(() => input.focus(), 0)
   }
 }
