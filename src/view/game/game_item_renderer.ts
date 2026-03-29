@@ -12,7 +12,6 @@ import carUrl from '../../assets/items/vehicles/car.glb?url'
 import boatUrl from '../../assets/items/vehicles/boat.glb?url'
 import pinUrl from '../../assets/ui/pin.glb?url'
 import roundedArrowUrl from '../../assets/ui/rounded_arrow.glb?url'
-import checkmarkUrl from '../../assets/ui/checkmark.png?url'
 import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
 import { ITEM_SCALE } from './render_constants'
 
@@ -36,9 +35,6 @@ const CARGO_ARROW_SURFACE_OFFSET = 0.005
 
 /** Opacity for ghost crates rendered at unloading destinations. */
 const GHOST_CRATE_OPACITY = 0.1
-
-/** Size of the checkmark sprite above delivered crates. */
-const CHECKMARK_SCALE = 0.03
 
 /** Size of the invalid-intent bubble sprite. */
 const INVALID_BUBBLE_SCALE = 0.025
@@ -350,7 +346,7 @@ export class GameItemRenderer {
             const vehicle = plan.vehicles[intent.vehicleId]
             if (vehicleTileId !== undefined && vehicle) {
               await this.renderCargoArrow(vehicleTileId, intent.toTileId, vehicle.hue, tileApi, globeCenter)
-              await this.renderGhostCrate(intent.crateId, intent.toTileId, cargoStep.stepIndex, tileApi, globeCenter, false)
+              await this.renderGhostCrate(intent.crateId, intent.toTileId, cargoStep.stepIndex, tileApi, globeCenter)
             }
             break
           }
@@ -359,7 +355,7 @@ export class GameItemRenderer {
             const vehicle = plan.vehicles[intent.vehicleId]
             if (vehicleTileId !== undefined && vehicle) {
               await this.renderCargoArrow(vehicleTileId, intent.toTileId, vehicle.hue, tileApi, globeCenter)
-              await this.renderGhostCrate(intent.crateId, intent.toTileId, cargoStep.stepIndex, tileApi, globeCenter, true)
+              await this.renderGhostCrate(intent.crateId, intent.toTileId, cargoStep.stepIndex, tileApi, globeCenter)
             }
             break
           }
@@ -415,7 +411,6 @@ export class GameItemRenderer {
     stepIndex: number,
     tileApi: TileCentersApi,
     globeCenter: THREE.Vector3,
-    isDelivery: boolean,
   ): Promise<void> {
     const tile = tileApi.getTileById(tileId)
     if (!tile) return
@@ -449,16 +444,6 @@ export class GameItemRenderer {
     this.objects.push(ghost)
     this.pickables.push(ghost)
 
-    if (isDelivery) {
-      // Checkmark sprite above ghost crate
-      const texture = await this.loadTexture(checkmarkUrl)
-      const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true })
-      const sprite = new THREE.Sprite(spriteMat)
-      sprite.scale.setScalar(CHECKMARK_SCALE)
-      sprite.position.copy(cratePos).addScaledVector(outwardNormal, CRATE_SURFACE_OFFSET + 0.04)
-      this.scene.add(sprite)
-      this.objects.push(sprite)
-    }
   }
 
   private async renderInvalidIntentBubble(

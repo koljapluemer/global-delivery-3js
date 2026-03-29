@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { createElement, MapPin } from 'lucide'
 import speechBubbleUrl from '../../assets/ui/speechbubble.png?url'
 import smallBubbleUrl from '../../assets/ui/small_bubble.png?url'
+import checkmarkUrl from '../../assets/ui/checkmark.png?url'
 import vehicleBubbleSvgRaw from '../../assets/ui/vehicle_bubble.svg?raw'
 import type { TileCentersApi } from '../../controller/layer_0/tile_centers_api'
 import type { Plan } from '../../model/types/Plan'
@@ -48,6 +49,11 @@ interface RouteLegLabelEntry {
   opacity: number
 }
 
+interface DeliveryMarkerEntry {
+  el: HTMLDivElement
+  worldPos: THREE.Vector3
+}
+
 function lifetimeLabel(remaining: number): string {
   return `⏳ ${remaining}`
 }
@@ -74,6 +80,7 @@ export class LabelRenderer {
   private vehicleLabels = new Map<number, LabelEntry>()
   private pinLabels = new Map<string, LabelEntry>()
   private routeLegLabels = new Map<string, RouteLegLabelEntry>()
+  private deliveryMarkers = new Map<string, DeliveryMarkerEntry>()
   private activeMenuCleanup: (() => void) | null = null
 
   constructor(
@@ -320,6 +327,27 @@ export class LabelRenderer {
     }
   }
 
+  /** Sync checkmark markers at DELIVER intent destinations. */
+  syncDeliveryMarkers(items: Array<{ key: string; worldPosition: THREE.Vector3 }>): void {
+    const seen = new Set<string>()
+    for (const item of items) {
+      seen.add(item.key)
+      if (!this.deliveryMarkers.has(item.key)) {
+        const el = this.createDeliveryMarker()
+        this.container.appendChild(el)
+        this.deliveryMarkers.set(item.key, { el, worldPos: item.worldPosition.clone() })
+      } else {
+        this.deliveryMarkers.get(item.key)!.worldPos.copy(item.worldPosition)
+      }
+    }
+    for (const [key, entry] of this.deliveryMarkers) {
+      if (!seen.has(key)) {
+        entry.el.remove()
+        this.deliveryMarkers.delete(key)
+      }
+    }
+  }
+
   openPinMenu(vehicleId: number, stepIndex: number): void {
     const entry = this.pinLabels.get(`${vehicleId}-${stepIndex}`)
     if (!entry?.menuPanel) return
@@ -361,6 +389,9 @@ export class LabelRenderer {
     for (const entry of this.routeLegLabels.values()) {
       this.updateRouteLegLabel(entry)
     }
+    for (const entry of this.deliveryMarkers.values()) {
+      this.updateDeliveryMarker(entry)
+    }
   }
 
   setDimmed(dimmed: boolean): void {
@@ -374,6 +405,7 @@ export class LabelRenderer {
     this.vehicleLabels.clear()
     this.pinLabels.clear()
     this.routeLegLabels.clear()
+    this.deliveryMarkers.clear()
   }
 
   // ---------------------------------------------------------------------------
@@ -579,6 +611,23 @@ export class LabelRenderer {
     return { el: wrapper, textEl, menuPanel }
   }
 
+  private createDeliveryMarker(): HTMLDivElement {
+    const el = document.createElement('div')
+    Object.assign(el.style, {
+      position: 'absolute',
+      pointerEvents: 'none',
+    })
+    const img = document.createElement('img')
+    img.src = checkmarkUrl
+    Object.assign(img.style, {
+      width: '32px',
+      height: '32px',
+      display: 'block',
+    })
+    el.appendChild(img)
+    return el
+  }
+
   private createRouteLegChip(traveltime: number): HTMLDivElement {
     const el = document.createElement('div')
     Object.assign(el.style, {
@@ -668,6 +717,16 @@ export class LabelRenderer {
     entry.el.style.left = `${screen.x}px`
     entry.el.style.top = `${screen.y}px`
     entry.el.style.transformOrigin = '50% 100%'
+    entry.el.style.transform = 'translateX(-50%) translateY(-100%)'
+  }
+
+  private updateDeliveryMarker(entry: DeliveryMarkerEntry): void {
+    const blend = this.getHorizonBlend(entry.worldPos)
+    entry.el.style.opacity = blend >= 1 ? '0' : String(1 - blend)
+    if (blend >= 1) return
+    const screen = this.worldToScreen(entry.worldPos)
+    entry.el.style.left = `${screen.x}px`
+    entry.el.style.top = `${screen.y}px`
     entry.el.style.transform = 'translateX(-50%) translateY(-100%)'
   }
 

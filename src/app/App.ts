@@ -141,6 +141,7 @@ export class App {
     this.labelRenderer?.syncVehicleLabels(intentManager.getPlan(), tileCentersApi)
     this.labelRenderer?.syncPinsFromPlan(intentManager.getPlan(), tileCentersApi)
     this.labelRenderer?.syncRouteLegLabels(legs, tileCentersApi)
+    this.labelRenderer?.syncDeliveryMarkers(this.collectDeliveryMarkers(tileCentersApi))
     const hasInvalidIntents = this.derived.steps.some(
       (s) => s.kind === 'CARGO' && !(s as DerivedCargoStep).action.valid,
     )
@@ -284,6 +285,7 @@ export class App {
         this.labelRenderer.syncVehicleLabels(plan, tileCentersApi)
         this.labelRenderer.syncPinsFromPlan(plan, tileCentersApi)
         this.labelRenderer.syncRouteLegLabels(legs, tileCentersApi)
+        this.labelRenderer.syncDeliveryMarkers(this.collectDeliveryMarkers(tileCentersApi))
         const economy = deriveTurnEconomy(gameState, plan, this.derived)
         planPanel.update(plan, this.derived, economy, { turnNumber: gameState.turnNumber, cratesDelivered: gameState.cratesDelivered }, false)
 
@@ -591,6 +593,24 @@ export class App {
         await this.delaySeconds(INTER_CRATE_DELAY_S)
       }
     }
+  }
+
+  private collectDeliveryMarkers(tileCentersApi: TileCentersApi): Array<{ key: string; worldPosition: THREE.Vector3 }> {
+    const items: Array<{ key: string; worldPosition: THREE.Vector3 }> = []
+    for (const step of this.derived.steps) {
+      if (step.kind !== 'CARGO') continue
+      const cargoStep = step as DerivedCargoStep
+      if (!cargoStep.action.valid) continue
+      const { intent } = cargoStep.action
+      if (intent.kind !== 'DELIVER') continue
+      const tile = tileCentersApi.getTileById(intent.toTileId)
+      if (!tile) continue
+      items.push({
+        key: `deliver-${intent.crateId}`,
+        worldPosition: new THREE.Vector3(tile.x, tile.z, -tile.y),
+      })
+    }
+    return items
   }
 
   private async delaySeconds(seconds: number): Promise<void> {
