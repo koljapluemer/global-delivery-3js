@@ -17,6 +17,7 @@ export interface InputModeUIDeps {
   crateLoadPreview: CrateLoadPreview | null
   vehiclePlacementPreview: VehiclePlacementPreview | null
   closeActiveMenu: () => void
+  setLabelsDimmed: (dimmed: boolean) => void
   crateLoadMenu: CrateLoadMenu
   gameItemRenderer: GameItemRenderer
 }
@@ -31,6 +32,7 @@ export function subscribeInputModeUI(deps: InputModeUIDeps): void {
     crateLoadPreview,
     vehiclePlacementPreview,
     closeActiveMenu,
+    setLabelsDimmed,
     crateLoadMenu,
     gameItemRenderer,
   } = deps
@@ -44,7 +46,9 @@ export function subscribeInputModeUI(deps: InputModeUIDeps): void {
     const isRouteSplit = state === 'routeSplit'
     const isVehiclePlacement = state === 'vehiclePlacement'
     const needsCancel = isPinPlacement || isCrateDrop || isCrateLoad
+    const needsDim = isPinPlacement || isPinDrag || isCrateDrop || isCrateLoad
     cancelButton[needsCancel ? 'show' : 'hide']()
+    setLabelsDimmed(needsDim)
     domElement.style.cursor =
       isPinPlacement || isCrateDrop || isCrateLoad || isVehiclePlacement
         ? 'crosshair'

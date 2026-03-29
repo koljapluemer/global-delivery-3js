@@ -315,6 +315,7 @@ export class App {
           crateLoadPreview: this.crateLoadPreview,
           vehiclePlacementPreview: this.vehiclePlacementPreview,
           closeActiveMenu: () => this.labelRenderer?.closeActiveMenu(),
+          setLabelsDimmed: (dimmed) => this.labelRenderer?.setDimmed(dimmed),
           crateLoadMenu,
           gameItemRenderer,
         })

@@ -104,6 +104,8 @@ export class LabelRenderer {
           100% { transform: translateX(-50%) translateY(-100%) scale(1); opacity: 1; }
         }
         .crate-arrive { animation: crateArrival 0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
+        .labels-dimmed { opacity: 0.5; transition: opacity 0.15s; }
+        .labels-dimmed * { pointer-events: none !important; }
       `
       document.head.appendChild(style)
     }
@@ -359,6 +361,10 @@ export class LabelRenderer {
     for (const entry of this.routeLegLabels.values()) {
       this.updateRouteLegLabel(entry)
     }
+  }
+
+  setDimmed(dimmed: boolean): void {
+    this.container.classList.toggle('labels-dimmed', dimmed)
   }
 
   dispose(): void {
