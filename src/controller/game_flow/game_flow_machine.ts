@@ -3,6 +3,8 @@ import { createMachine } from 'xstate'
 
 export type GameFlowEvent =
   | { type: 'START_GAME' }
+  | { type: 'START_TUTORIAL' }
+  | { type: 'TUTORIAL_DONE' }
   | { type: 'CARD_PICK_DONE' }
   | { type: 'CONFIRM_PLAN' }
   | { type: 'ANIMATION_DONE'; outcome: 'CONTINUE' | 'GAME_OVER' }
@@ -18,6 +20,13 @@ export const gameFlowMachine = createMachine(
       MAIN_MENU: {
         on: {
           START_GAME: 'CARD_PICK',
+          START_TUTORIAL: 'TUTORIAL',
+        },
+      },
+      TUTORIAL: {
+        on: {
+          TUTORIAL_DONE: 'CARD_PICK',
+          GO_TO_MENU: 'MAIN_MENU',
         },
       },
       CARD_PICK: {

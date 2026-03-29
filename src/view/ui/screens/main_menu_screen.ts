@@ -1,4 +1,5 @@
 import type { GameSeed } from '../../../model/types/GameSeed'
+import { dailySeed } from '../../../util/daily_seed'
 
 function hashString(s: string): number {
   let h = 0x811c9dc5
@@ -7,10 +8,6 @@ function hashString(s: string): number {
     h = Math.imul(h, 0x01000193)
   }
   return h >>> 0
-}
-
-function dailySeed(): number {
-  return Math.floor(Date.now() / 86400000)
 }
 
 function randomSeed(): number {
@@ -63,7 +60,7 @@ const SECONDARY_BUTTON_STYLE: Partial<CSSStyleDeclaration> = {
 
 export class MainMenuScreen {
   onStartGame: ((seed: GameSeed) => void) | null = null
-  onShowHowToPlay: (() => void) | null = null
+  onStartTutorial: (() => void) | null = null
 
   private el: HTMLElement | null = null
   private seedInput: HTMLInputElement | null = null
@@ -77,7 +74,7 @@ export class MainMenuScreen {
     div.appendChild(this.buildDailyButton())
     div.appendChild(this.buildStartButton())
     div.appendChild(this.buildSeedSection())
-    div.appendChild(this.buildHowToPlayButton())
+    div.appendChild(this.buildTutorialButton())
 
     this.el = div
     container.appendChild(div)
@@ -172,12 +169,12 @@ export class MainMenuScreen {
     return section
   }
 
-  private buildHowToPlayButton(): HTMLButtonElement {
+  private buildTutorialButton(): HTMLButtonElement {
     const btn = document.createElement('button')
     Object.assign(btn.style, SECONDARY_BUTTON_STYLE)
     btn.style.marginTop = '0.5rem'
-    btn.textContent = 'How to Play'
-    btn.addEventListener('click', () => this.onShowHowToPlay?.())
+    btn.textContent = 'Tutorial'
+    btn.addEventListener('click', () => this.onStartTutorial?.())
     btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.15)' })
     btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.08)' })
     return btn

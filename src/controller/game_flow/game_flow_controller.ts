@@ -12,10 +12,13 @@ import type { PlanIntentManager } from '../plan_intent_manager'
 import type { TileCentersApi } from '../layer_0/tile_centers_api'
 import type { NavApi } from '../navigation'
 import type { PlannedCrate } from '../crate_spawner'
+import type { TutorialInstructionBox } from '../../view/ui/tutorial/tutorial_instruction_box'
 import { emptyPlan } from '../../model/world_generator'
 import { SeededRng } from '../../util/seeded_rng'
 import { CrateSpawner } from '../crate_spawner'
 import { AvailableVehicleTypes } from '../../model/db/vehicles'
+import { TutorialController } from '../tutorial/tutorial_controller'
+import { dailySeed } from '../../util/daily_seed'
 
 export interface GameFlowControllerDeps {
   app: App
@@ -26,6 +29,7 @@ export interface GameFlowControllerDeps {
   intentManager: PlanIntentManager
   tileCentersApi: TileCentersApi
   navApi: NavApi
+  tutorialInstructionBox: TutorialInstructionBox
 }
 
 function resetGameState(gameState: GameState): void {
@@ -41,6 +45,8 @@ export class GameFlowController {
   private rng: SeededRng = new SeededRng(0)
   private lastSeed: GameSeed = { value: 0 }
   private autoPlace = false
+  private startAsDaily = false
+  private tutorialController: TutorialController | null = null
 
   constructor(deps: GameFlowControllerDeps) {
     this.deps = deps
@@ -64,7 +70,32 @@ export class GameFlowController {
           this.deps.mainMenuScreen.show()
           break
 
+        case 'TUTORIAL': {
+          app.hidePlanUI()
+          const tc = new TutorialController({
+            app,
+            intentManager: this.deps.intentManager,
+            tileCentersApi: this.deps.tileCentersApi,
+            navApi: this.deps.navApi,
+            instructionBox: this.deps.tutorialInstructionBox,
+          })
+          tc.onTutorialDone = () => {
+            this.startAsDaily = true
+            this.actor.send({ type: 'TUTORIAL_DONE' })
+          }
+          this.tutorialController = tc
+          tc.start()
+          break
+        }
+
         case 'CARD_PICK': {
+          if (this.startAsDaily) {
+            this.startAsDaily = false
+            this.isNewGame = true
+            this.lastSeed = { value: dailySeed(), autoPlace: true }
+            this.rng = new SeededRng(this.lastSeed.value)
+            this.autoPlace = true
+          }
           if (this.isNewGame) {
             this.isNewGame = false
             this.deps.intentManager.resetPlan(emptyPlan())
@@ -133,6 +164,10 @@ export class GameFlowController {
       this.actor.send({ type: 'START_GAME' })
     }
 
+    this.deps.mainMenuScreen.onStartTutorial = () => {
+      this.actor.send({ type: 'START_TUTORIAL' })
+    }
+
     this.deps.gameOverScreen.onRestart = () => {
       this.rng = new SeededRng(this.lastSeed.value)
       this.autoPlace = this.lastSeed.autoPlace ?? false
@@ -167,6 +202,8 @@ export class GameFlowController {
     this.deps.mainMenuScreen.hide()
     this.deps.gameOverScreen.hide()
     this.deps.cardPickScreen.hide()
+    this.tutorialController?.dispose()
+    this.tutorialController = null
   }
 
   private async runCardPickSequence(kinds: CardKind[]): Promise<void> {

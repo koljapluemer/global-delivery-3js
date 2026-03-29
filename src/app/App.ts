@@ -98,6 +98,21 @@ export class App {
     return this.globeCenter
   }
 
+  panToTile(tileId: number): void {
+    const tile = this.deps.tileCentersApi.getTileById(tileId)
+    if (tile) this.deps.mainCamera.panTo(new THREE.Vector3(tile.x, tile.z, -tile.y))
+  }
+
+  highlightCountry(name: string): void {
+    this.countryHighlightRenderer?.show(name, this.deps.tileCentersApi, this.deps.mainCamera.camera.position)
+    this.deps.planPanel.setHighlightedCountry(name)
+  }
+
+  clearCountryHighlight(): void {
+    this.countryHighlightRenderer?.hide()
+    this.deps.planPanel.setHighlightedCountry(null)
+  }
+
   async rerender(): Promise<void> {
     const {
       intentManager,
