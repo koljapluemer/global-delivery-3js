@@ -1,8 +1,21 @@
 import * as THREE from 'three'
 import type { TileCentersApi, TileCenter } from '../../controller/layer_0/tile_centers_api'
 
-const POINT_SIZE = 0.025
-const SURFACE_OFFSET = 0.012
+const POINT_SIZE = 0.018
+const SURFACE_OFFSET = 0.002
+
+function makeCircleTexture(): THREE.Texture {
+  const size = 64
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  ctx.beginPath()
+  ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2)
+  ctx.fillStyle = 'white'
+  ctx.fill()
+  return new THREE.CanvasTexture(canvas)
+}
 
 export class CountryHighlightRenderer {
   private readonly scene: THREE.Scene
@@ -34,7 +47,9 @@ export class CountryHighlightRenderer {
     if (this.points) {
       this.scene.remove(this.points)
       this.points.geometry.dispose()
-      ;(this.points.material as THREE.Material).dispose()
+      const mat = this.points.material as THREE.PointsMaterial
+      mat.map?.dispose()
+      mat.dispose()
       this.points = null
     }
   }
@@ -62,10 +77,12 @@ export class CountryHighlightRenderer {
     const material = new THREE.PointsMaterial({
       size: POINT_SIZE,
       sizeAttenuation: true,
-      color: 0xffdd44,
+      color: 0xffffff,
+      map: makeCircleTexture(),
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.45,
       depthWrite: false,
+      alphaTest: 0.1,
     })
 
     return new THREE.Points(geometry, material)
